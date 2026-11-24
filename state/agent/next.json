@@ -1,16 +1,13 @@
 {
  "next": [
-  "before anything else: find why a hijack call now kills the client - bisect thread choice vs found state vs luaB_print; keep the client on the home screen (no place) as the controlled case",
-  "M2 close: call luaB_print with one string argument so the log line is distinctive, then confirm the exact 'UMBRA' line in AppData/Local/Roblox/logs",
-  "add a thunk variant that stores rax into the bus so calls can return values (proves execution without the log)",
-  "make the state finder wait for a thread executing client .text (pick_thread) and retry on OpenProcess denial",
-  "then M3: keep the found lua_State in the stub, push a Luau runner closure, and drive the Heartbeat queue",
-  "re-baseline footprint_audit for the injected state; unmap stale images on re-inject"
+  "Windows side, in order: restart the bot so the ticket/panel fixes are live (start > run > python tools/umbra_bot.py), then delete the old panels and run python tools/panels.py --clear",
+  "dotnet publish per docs/build.md, then obfuscar with obfuscar.xml, then hash and post to #builds",
+  "live-verify account location with the alt signed in: read the country, change it, confirm the read-back, then confirm whether the GDK client writes it back on relaunch",
+  "M2 natives: push one TString argument without crashing (top/base writes), then luau_load",
+  "menu: measure whether the tween reads as smooth at 30 fps in a real game, cut the toast delay if it stacks"
  ],
- "quirks": [
-  "GDK activation (shell:AppsFolder\\...!Game) currently dies ~12 s after start; roblox:// starts the legacy client instead",
-  "legacy client logs to AppData/Local/Roblox/logs, GDK to AppData/Local/RobloxPCGDK/logs - luacall.py now reads the legacy dir",
-  "Hyperion denies PROCESS_ALL_ACCESS in bursts; retry, do not conclude the client is gone",
-  "hard-killing the client leaves a stale mutex: the next instance sits in waitForNewPlayerProcess and exits"
- ]
+ "blocked": [
+  "compiling the WPF app and any live client test: this container has no dotnet and no Windows interop"
+ ],
+ "updated": "2026-11-24T23:10:00"
 }

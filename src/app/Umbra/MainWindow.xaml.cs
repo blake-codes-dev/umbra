@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Threading.Tasks;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Umbra.Services;
 
 namespace Umbra;
@@ -11,6 +14,8 @@ namespace Umbra;
 public partial class MainWindow : Window
 {
     private readonly Settings _settings = Settings.Load();
+    private List<LibraryScript> _library = new();
+    private SpooferWindow? _spoofer;
     private IBackend _backend = null!;
     private bool _loadingUi = true;
     private string? _trace;
@@ -22,7 +27,6 @@ public partial class MainWindow : Window
         OptLate.IsChecked = _settings.LateInject;
         OptSuspend.IsChecked = _settings.SuspendLaunch;
         OptVerify.IsChecked = _settings.VerifyFootprint;
-        OptElevate.IsChecked = _settings.Elevate;
         _loadingUi = false;
         SwapBackend();
         Loaded += (_, _) =>
@@ -31,6 +35,9 @@ public partial class MainWindow : Window
             OnOutput(new(_settings.Backend == "pipe"
                 ? "ready. pipe backend, needs an injected client on umbra-PID."
                 : "ready. mock backend, no client needed.", false));
+            Animate(PageHome);
+            LoadLibrary();
+            ShowAdminState();
         };
         Closing += (_, _) => _settings.Save();
         var argv = Environment.GetCommandLineArgs();
@@ -83,7 +90,6 @@ public partial class MainWindow : Window
         _settings.LateInject = OptLate.IsChecked == true;
         _settings.SuspendLaunch = OptSuspend.IsChecked == true;
         _settings.VerifyFootprint = OptVerify.IsChecked == true;
-        _settings.Elevate = OptElevate.IsChecked == true;
         var wanted = OptMock.IsChecked == true ? "mock" : "pipe";
         if (wanted != _settings.Backend) SwapBackend();
         _settings.Save();
@@ -95,6 +101,7 @@ public partial class MainWindow : Window
         return procs.Length > 0 ? procs[0].Id.ToString() : "";
     }
 
+    // ---------------------------------------------------------------- chrome
     private void TitleBar_Drag(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2)
@@ -110,6 +117,49 @@ public partial class MainWindow : Window
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void OpenSpoofer_Click(object sender, RoutedEventArgs e)
+    {
+        if (_spoofer is { IsLoaded: true })
+        {
+            _spoofer.Activate();
+            return;
+        }
+        _spoofer = new SpooferWindow();
+        _spoofer.Closed += (_, _) => _spoofer = null;
+        _spoofer.Show();
+    }
+
+    private void OpenMenu_Click(object sender, RoutedEventArgs e)
+    {
+        var path = FindRepoFile("src", "luau", "menu.luau");
+        if (path is null)
+        {
+            RunHint.Text = "menu.luau not found";
+            return;
+        }
+        try
+        {
+            Clipboard.SetText(System.IO.File.ReadAllText(path));
+            NavScripts.IsChecked = true;
+            RunHint.Text = "menu.luau copied, execute it in the client";
+        }
+        catch (Exception)
+        {
+            RunHint.Text = "menu.luau could not be read";
+        }
+    }
+
+    private static string? FindRepoFile(params string[] parts)
+    {
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        for (var depth = 0; depth < 6 && dir is not null; depth++, dir = dir.Parent)
+        {
+            var guess = System.IO.Path.Combine(new[] { dir.FullName }.Concat(parts).ToArray());
+            if (System.IO.File.Exists(guess)) return guess;
+        }
+        return null;
+    }
+
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (PageHome is null) return;
@@ -118,8 +168,139 @@ public partial class MainWindow : Window
         PageScripts.Visibility = tag == "scripts" ? Visibility.Visible : Visibility.Collapsed;
         PageConsole.Visibility = tag == "console" ? Visibility.Visible : Visibility.Collapsed;
         PageSettings.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
+        var page = tag switch
+        {
+            "scripts" => PageScripts,
+            "console" => PageConsole,
+            "settings" => PageSettings,
+            _ => PageHome,
+        };
+        Animate(page);
     }
 
+    /// <summary>Fade and rise, 180 ms. Every page change, never a snap.</summary>
+    private static void Animate(UIElement page)
+    {
+        var transform = new TranslateTransform(0, 10);
+        page.RenderTransform = transform;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        page.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = ease });
+        transform.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(180)) { EasingFunction = ease });
+    }
+
+    // ---------------------------------------------------------------- library
+    private void LoadLibrary()
+    {
+        _library = Library.Load();
+        RenderLibrary(_library, LibHost, 12);
+        RenderLibrary(_library.Take(4).ToList(), QuickHost, 6, asTile: true);
+    }
+
+    private void RenderLibrary(List<LibraryScript> items, Panel host, int limit, bool asTile = false)
+    {
+        host.Children.Clear();
+        foreach (var item in items.Take(limit))
+        {
+            var card = new Border
+            {
+                Style = (Style)FindResource("CardFlat"),
+                Padding = new Thickness(12, 10, 12, 10),
+                Margin = new Thickness(0, 0, asTile ? 10 : 6, asTile ? 10 : 6),
+            };
+            var text = new StackPanel();
+            text.Children.Add(new TextBlock
+            {
+                Text = item.Name,
+                FontWeight = FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            text.Children.Add(new TextBlock
+            {
+                Text = item.Description,
+                Style = (Style)FindResource("Muted"),
+                FontSize = 11,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 8, 0, 0),
+            };
+            var load = new Button
+            {
+                Style = (Style)FindResource("Btn"),
+                Content = "load",
+                Padding = new Thickness(10, 3, 10, 3),
+                FontSize = 11,
+            };
+            load.Click += (_, _) =>
+            {
+                Editor.Text = item.Source;
+                NavScripts.IsChecked = true;
+                RunHint.Text = item.Name + " loaded";
+            };
+            var run = new Button
+            {
+                Style = (Style)FindResource("BtnPrimary"),
+                Content = "run",
+                Padding = new Thickness(10, 3, 10, 3),
+                FontSize = 11,
+                Margin = new Thickness(6, 0, 0, 0),
+            };
+            run.Click += (_, _) =>
+            {
+                Editor.Text = item.Source;
+                NavScripts.IsChecked = true;
+                Run();
+            };
+            actions.Children.Add(load);
+            actions.Children.Add(run);
+            text.Children.Add(actions);
+            card.Child = text;
+            host.Children.Add(card);
+        }
+    }
+
+    private void LibSearch_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (LibHost is null) return;
+        var needle = LibSearch.Text.Trim().ToLowerInvariant();
+        var filtered = needle.Length == 0
+            ? _library
+            : _library.Where(s => (s.Name + " " + s.Description).ToLowerInvariant().Contains(needle)).ToList();
+        RenderLibrary(filtered, LibHost, 200);
+    }
+
+    // ---------------------------------------------------------------- elevation
+    private void ShowAdminState()
+    {
+        if (SystemInfo.IsAdmin())
+        {
+            AdminText.Text = "running elevated. identity writes will land.";
+            PromptBox.Text = "(already elevated)";
+            return;
+        }
+        AdminText.Text = "not elevated. reading works, HKLM writes do not.";
+        PromptBox.Text = Elevation.Prompt();
+    }
+
+    private void CopyPrompt_Click(object sender, RoutedEventArgs e)
+    {
+        Elevation.CopyPrompt();
+        AdminText.Text = "command copied to the clipboard.";
+    }
+
+    private void Elevate_Click(object sender, RoutedEventArgs e)
+    {
+        if (Elevation.Relaunch()) return;
+        Elevation.CopyPrompt();
+        AdminText.Text = "elevation was refused, command copied instead.";
+    }
+
+    // ---------------------------------------------------------------- attach
     private async void Attach_Click(object sender, RoutedEventArgs e)
     {
         AttachBtn.IsEnabled = false;
@@ -163,7 +344,7 @@ public partial class MainWindow : Window
         {
             Text = (line.IsEcho ? "> " : "") + line.Text,
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
-            FontSize = 12.5,
+            FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 1, 0, 1),
             Foreground = line.IsError
@@ -171,6 +352,16 @@ public partial class MainWindow : Window
                 : line.IsEcho ? (Brush)FindResource("AccentBrush") : (Brush)FindResource("DimBrush"),
         };
         ConsoleHost.Children.Add(block);
+        if (ConsoleHostWide is not null)
+            ConsoleHostWide.Children.Add(new TextBlock
+            {
+                Text = block.Text,
+                FontFamily = block.FontFamily,
+                FontSize = block.FontSize,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = block.Margin,
+                Foreground = block.Foreground,
+            });
         if (_trace is not null)
         {
             try
@@ -185,7 +376,11 @@ public partial class MainWindow : Window
 
     private void Run_Click(object sender, RoutedEventArgs e) => Run();
     private void ClearEditor_Click(object sender, RoutedEventArgs e) => Editor.Clear();
-    private void ClearConsole_Click(object sender, RoutedEventArgs e) => ConsoleHost.Children.Clear();
+    private void ClearConsole_Click(object sender, RoutedEventArgs e)
+    {
+        ConsoleHost.Children.Clear();
+        ConsoleHostWide.Children.Clear();
+    }
 
     private void Editor_KeyDown(object sender, KeyEventArgs e)
     {

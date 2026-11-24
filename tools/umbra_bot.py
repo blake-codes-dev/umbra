@@ -181,6 +181,30 @@ def row(*buttons):
     return {"type": 1, "components": list(buttons)}
 
 
+# one table for every product, so panels, /buy and ticket intros cannot disagree.
+# aliases exist because older panels and older slash choices used other words.
+PRODUCTS = {
+    "executor": ("Executor", "$10", "1000 R$"),
+    "modmenu": ("Mod Menu", "$4", "400 R$"),
+    "spoofer": ("Spoofer", "$6", "600 R$"),
+    "bundle": ("All three", "$14", "1400 R$"),
+}
+ALIASES = {"all": "bundle", "allthree": "bundle", "everything": "bundle",
+           "combo": "bundle", "both": "bundle", "menu": "modmenu"}
+
+
+def product_key(raw: str) -> str:
+    k = (raw or "").strip().lower().replace(" ", "").replace("-", "").replace("_", "")
+    k = ALIASES.get(k, k)
+    return k if k in PRODUCTS else "bundle"
+
+
+def slug(text: str) -> str:
+    keep = "".join(c if c.isalnum() else "-" for c in text.lower())
+    return "-".join(p for p in keep.split("-") if p)[:20] or "user"
+
+
+
 # ---------------------------------------------------------------- handlers
 def state_ids():
     s = load(STATE, {})
@@ -231,16 +255,38 @@ async def on_component(interaction):
                                              "Missing role. Ping a maintainer.", WARN), ephemeral=True)
         return
 
+    # close is matched before the generic prefix, otherwise every Close click
+    # falls through and opens another ticket.
+    if cid == "ticket:close":
+        await close_ticket(interaction)
+        return
+
+    if cid in ("ticket:help", "ticket:support"):
+        await open_help_modal(interaction)
+        return
+
     if cid.startswith("ticket:"):
         parts = cid.split(":")
         kind = parts[1]
-        product = parts[2] if len(parts) > 2 else ""
+        product = product_key(parts[2] if len(parts) > 2 else "")
         support = channels.get("support")
+        if not support:
+            await respond(interaction, embed("Ticket failed", "No support channel set.", WARN),
+                          ephemeral=True)
+            return
         name = {"buy": "purchase", "support": "help", "bug": "bug"}.get(kind, "ticket")
         display = (user.get("global_name") or user.get("username") or "user")[:20]
+        existing = find_open_thread(support, display)
+        if existing:
+            await asyncio.to_thread(http, "PUT", f"/channels/{existing}/thread-members/{uid}", {})
+            await asyncio.to_thread(http, "POST", f"/channels/{existing}/messages",
+                                    {"content": f"<@{uid}> bumping this back up."})
+            await respond(interaction, embed("Already open", f"<#{existing}>", SUCCESS),
+                          ephemeral=True)
+            return
         thread = await asyncio.to_thread(
             http, "POST", f"/channels/{support}/threads",
-            {"name": f"{name}-{display}", "type": 11, "invitable": False,
+            {"name": f"{name}-{slug(display)}", "type": 11, "invitable": False,
              "auto_archive_duration": 1440})
         if not thread:
             await respond(interaction, embed("Ticket failed", "Try again or ping staff.", WARN),
@@ -248,45 +294,138 @@ async def on_component(interaction):
             return
         tid = thread["id"]
         await asyncio.to_thread(http, "PUT", f"/channels/{tid}/thread-members/{uid}", {})
+        label, price, robux = PRODUCTS[product]
         intro = {
-            "buy": ((f"**Purchase — {product or 'bundle'}**\n" if product else "**Purchase**\n")
-                    + "Thanks for supporting Umbra.\n\n"
-                    "**Price list**\n• Executor — **$6** lifetime (Founders)\n"
-                    "• Mod Menu — **$4** lifetime\n• Bundle — **$10** lifetime\n\n"
+            "buy": (f"**{label} — {price} ({robux})**\n"
+                    "Thanks for supporting Umbra.\n\n"
                     "**Pay with Robux** (no bank needed):\n"
                     "1. Open the Roblox experience linked in this thread.\n"
-                    "2. Buy the gamepass for the product you want.\n"
+                    "2. Buy the gamepass for exactly the amount above.\n"
                     "3. Paste your Roblox username + the gamepass receipt here.\n\n"
-                    "A maintainer verifies and grants **Buyer**, then DMs your license key.\n"
-                    "Refunds within 48 h if the executor does not run on your machine."),
-            "support": ("**Support**\nPost the template below and a maintainer will help.\n```\n"
-                        "Umbra version:\nWindows:\nGame / place id:\nWhat I did:\nWhat happened:\n"
-                        "Error text:\nFresh empty script also fails? yes/no\n```"),
+                    "A maintainer verifies and grants the buyer role, then DMs your license key.\n"
+                    "Refund inside 48 h if it never injected on your machine."),
+            "support": ("**Support**\nA maintainer replies here, usually inside 12 h.\n"
+                        "If you can, open the ticket with the button on the panel so the questions "
+                        "arrive filled in already.\n```\nversion:\nwindows:\ngame or place id:\n"
+                        "what happened:\nerror text:\nempty script also fails: yes/no\n```"),
             "bug": ("**Bug report**\nWhat broke, how to reproduce, and the console text. "
                     "Screenshots/clips welcome. We fix the top report every build."),
         }.get(kind, "**Ticket**\nA maintainer will be with you shortly.")
-        msg = await asyncio.to_thread(http, "POST", f"/channels/{tid}/messages", {
+        await asyncio.to_thread(http, "POST", f"/channels/{tid}/messages", {
             "content": f"<@{uid}>",
             **embed(f"{kind.upper()} ticket", intro, ACCENT),
-            "components": [row(button("Close", "ticket:close", 4, "🔒"))],
+            "components": [row(button("Close", "ticket:close", 4, "\U0001f512"))],
         })
         await respond(interaction, embed("Ticket opened", f"<#{tid}>", SUCCESS), ephemeral=True)
         return
 
-    if cid == "ticket:close":
-        member = interaction.get("member", {})
-        if not is_staff(member):
-            await respond(interaction, embed("Staff only", "Only staff can close tickets.", WARN),
-                          ephemeral=True)
-            return
-        channel_id = interaction.get("channel_id")
+    await respond(interaction, embed("Unknown action", cid, WARN), ephemeral=True)
+
+
+# ---------------------------------------------------------------- tickets
+async def open_help_modal(interaction):
+    await respond_modal(interaction, {"custom_id": "ticket:modal:help", "title": "Open a support ticket",
+                                "components": [
+                                    {"type": 1, "components": [{"type": 4, "custom_id": "game",
+                                                                "label": "game or place id",
+                                                                "style": 1, "max_length": 120,
+                                                                "placeholder": "Any game / place id"}]},
+                                    {"type": 1, "components": [{"type": 4, "custom_id": "what",
+                                                                "label": "what you did and what happened",
+                                                                "style": 2, "max_length": 900,
+                                                                "required": True}]},
+                                    {"type": 1, "components": [{"type": 4, "custom_id": "error",
+                                                                "label": "error text (or 'none')",
+                                                                "style": 2, "max_length": 400,
+                                                                "required": True}]},
+                                ]})
+
+
+async def respond_modal(interaction, data):
+    """Modal replies are interaction type 9, not the usual type 4."""
+    await asyncio.to_thread(http, "POST",
+                            f"/interactions/{interaction['id']}/{interaction['token']}/callback",
+                            {"type": 9, "data": data})
+
+
+async def on_modal(interaction):
+    cid = interaction.get("data", {}).get("custom_id", "")
+    if not cid.startswith("ticket:modal"):
+        await respond(interaction, embed("Unknown form", cid, WARN), ephemeral=True)
+        return
+    fields = {}
+    for row_data in interaction.get("data", {}).get("components", []):
+        for comp in row_data.get("components", []):
+            fields[comp.get("custom_id")] = comp.get("value", "")
+    guild_id, channels, _roles = state_ids()
+    user = interaction.get("user") or interaction.get("member", {}).get("user", {})
+    uid = str(user.get("id"))
+    display = (user.get("global_name") or user.get("username") or "user")[:20]
+    support = channels.get("support")
+    thread = await asyncio.to_thread(
+        http, "POST", f"/channels/{support}/threads",
+        {"name": f"help-{slug(display)}", "type": 11, "invitable": False,
+         "auto_archive_duration": 1440})
+    if not thread:
+        await respond(interaction, embed("Ticket failed", "Try again or ping staff.", WARN),
+                      ephemeral=True)
+        return
+    tid = thread["id"]
+    await asyncio.to_thread(http, "PUT", f"/channels/{tid}/thread-members/{uid}", {})
+    await respond(interaction, embed("Ticket opened", f"<#{tid}>", SUCCESS), ephemeral=True)
+    await followup(interaction, {
+        "thread_id": tid,
+        "content": f"<@{uid}>",
+        **embed("Support ticket", "Filed by the form, no template to fill in.",
+                ACCENT,
+                fields=[("Game", fields.get("game") or "not given", True),
+                        ("What happened", fields.get("what") or "-", False),
+                        ("Error", fields.get("error") or "none", False)]),
+        "components": [row(button("Close", "ticket:close", 4, "\U0001f512"))],
+    })
+
+
+def active_threads(channel_id: str) -> list:
+    guild_id, _c, _r = state_ids()
+    data = http("GET", f"/guilds/{guild_id}/threads/active") or {}
+    return [t for t in data.get("threads", [])
+            if t.get("parent_id") == channel_id and not t.get("thread_metadata", {}).get("archived")]
+
+
+def find_open_thread(channel_id: str, display: str) -> str | None:
+    """A member with a live ticket gets bumped into it instead of a second one."""
+    wanted = slug(display)
+    for t in active_threads(channel_id):
+        if t["name"].lower().endswith(wanted):
+            return t["id"]
+    return None
+
+
+async def close_ticket(interaction):
+    """Staff or the opener closes: say goodbye, then delete the thread for good."""
+    channel_id = interaction.get("channel_id")
+    user = interaction.get("user") or interaction.get("member", {}).get("user", {})
+    uid = str(user.get("id"))
+    channel = await asyncio.to_thread(http, "GET", f"/channels/{channel_id}") or {}
+    if channel.get("type") not in (10, 11, 12):
+        await respond(interaction, embed("Not a ticket", "Close only works inside a ticket.", WARN),
+                      ephemeral=True)
+        return
+    if not (is_staff(interaction.get("member", {})) or channel.get("owner_id") == uid):
+        await respond(interaction, embed("Not your ticket",
+                                         "The opener or staff can close this.", WARN),
+                      ephemeral=True)
+        return
+    await respond(interaction, embed("Closing", "Deleting this thread now.", SUCCESS),
+                  ephemeral=True)
+    await asyncio.to_thread(http, "POST", f"/channels/{channel_id}/messages", {
+        **embed("Closed", f"by <@{uid}>. Deleting in a moment, open a new one any time.", SUCCESS)})
+    await asyncio.sleep(1.5)
+    if http("DELETE", f"/channels/{channel_id}") is None:
+        # 204 is the success answer; anything else keeps the record by archiving
         await asyncio.to_thread(http, "PATCH", f"/channels/{channel_id}",
                                 {"archived": True, "locked": True})
-        await respond(interaction, embed("Closed", "Ticket archived. Open a new one any time.",
-                                         SUCCESS), ephemeral=True)
-        return
 
-    await respond(interaction, embed("Unknown action", cid, WARN), ephemeral=True)
 
 
 async def on_command(interaction):
@@ -354,16 +493,18 @@ async def on_command(interaction):
         return
 
     if name == "buy":
-        product = opts.get("product", "bundle")
-        prices = {"executor": ("Executor", "$6 / 600 R$", "executor"),
-                  "modmenu": ("Mod Menu", "$4 / 400 R$", "modmenu"),
-                  "bundle": ("Bundle", "$10 / 1000 R$", "bundle")}
-        label, price, code = prices.get(product, prices["bundle"])
+        product = product_key(opts.get("product") or "")
+        label, price, robux = PRODUCTS[product]
         support = channels.get("support")
         display = (user.get("global_name") or user.get("username") or "user")[:20]
+        existing = find_open_thread(support, display) if support else None
+        if existing:
+            await respond(interaction, embed("Already open", f"<#{existing}>", SUCCESS),
+                          ephemeral=True)
+            return
         thread = await asyncio.to_thread(
             http, "POST", f"/channels/{support}/threads",
-            {"name": f"buy-{code}-{display}", "type": 11, "invitable": False,
+            {"name": f"purchase-{slug(display)}", "type": 11, "invitable": False,
              "auto_archive_duration": 1440})
         if not thread:
             await respond(interaction, embed("Purchase failed", "Try again.", WARN), ephemeral=True)
@@ -372,14 +513,15 @@ async def on_command(interaction):
         await asyncio.to_thread(http, "PUT", f"/channels/{tid}/thread-members/{uid}", {})
         await asyncio.to_thread(http, "POST", f"/channels/{tid}/messages", {
             "content": f"<@{uid}>",
-            **embed(f"{label} — {price}",
+            **embed(f"{label} — {price} ({robux})",
                     "**Pay with Robux** (no bank needed):\n"
                     "1. Open the gamepass link in this thread.\n"
-                    "2. Buy the pass for the amount above.\n"
+                    "2. Buy the pass for exactly the amount above.\n"
                     "3. Post your Roblox username + receipt.\n\n"
                     "**Pay with card / PayPal** (optional): ask for the link.\n"
-                    "A maintainer grants **Buyer** and DMs the license key.",
+                    "A maintainer grants the buyer role and DMs the license key.",
                     ACCENT),
+            "components": [row(button("Close", "ticket:close", 4, "\U0001f512"))],
         })
         await respond(interaction, embed("Purchase", f"<#{tid}>", SUCCESS), ephemeral=True)
         return
@@ -406,8 +548,8 @@ async def on_command(interaction):
             target_id = target
         else:
             target_id = str(target)
-        if plan in ("buyer", "beta"):
-            role = roles.get(plan.capitalize())
+        role = roles.get("Beta" if plan == "beta" else "Buyer")
+        if plan in ("buyer", "beta", "executor", "modmenu", "spoofer", "bundle"):
             if role:
                 await asyncio.to_thread(http, "PUT",
                                         f"/guilds/{guild_id}/members/{target_id}/roles/{role}", {})
@@ -494,6 +636,8 @@ async def run_gateway():
                                 await on_command(d)
                             elif d.get("type") == 3:
                                 await on_component(d)
+                            elif d.get("type") == 5:
+                                await on_modal(d)
                         except Exception:
                             traceback.print_exc()
                             try:
@@ -521,13 +665,18 @@ COMMANDS = [
      "options": [{"name": "product", "description": "What to buy", "type": 3, "required": False,
                   "choices": [{"name": "Executor", "value": "executor"},
                               {"name": "Mod Menu", "value": "modmenu"},
-                              {"name": "Bundle", "value": "bundle"}]}]},
+                              {"name": "Spoofer", "value": "spoofer"},
+                              {"name": "All three (bundle)", "value": "bundle"}]}]},
     {"name": "status", "description": "Build and license status"},
     {"name": "grant", "description": "Staff: grant a plan",
      "options": [{"name": "user", "description": "Member", "type": 6, "required": True},
-                 {"name": "plan", "description": "buyer or beta", "type": 3, "required": True,
-                  "choices": [{"name": "Buyer", "value": "buyer"},
-                              {"name": "Beta", "value": "beta"}]}]},
+                 {"name": "plan", "description": "what was paid for", "type": 3, "required": True,
+                  "choices": [{"name": "Buyer (no product named)", "value": "buyer"},
+                              {"name": "Beta", "value": "beta"},
+                              {"name": "Executor", "value": "executor"},
+                              {"name": "Mod Menu", "value": "modmenu"},
+                              {"name": "Spoofer", "value": "spoofer"},
+                              {"name": "All three", "value": "bundle"}]}]},
     {"name": "revoke", "description": "Staff: revoke a license",
      "options": [{"name": "user", "description": "Member", "type": 6, "required": True}]},
 ]
@@ -559,23 +708,30 @@ def panels():
                     "**Bug report** — reproducible issue with steps.",
                     ACCENT),
             "components": [row(button("Purchase", "ticket:buy", 3, "🛒"),
-                               button("Support", "ticket:support", 2, "🎫"),
+                               button("Support", "ticket:help", 2, "🎫"),
                                button("Bug report", "ticket:bug", 2, "🐛"))]})
-    # pricing panel
+    # products panel — same PRODUCTS table, so a price can never drift from a button
     if channels.get("pricing"):
         http("POST", f"/channels/{channels['pricing']}/messages", {
-            **embed("Pricing",
-                    "**Executor — $6 lifetime** (Founders; 10 slots)\n"
-                    "Loadstring, real environment, console, files, HTTP, hooks.\n\n"
-                    "**Mod Menu — $4 lifetime**\nTabs, toggles, sliders, keybinds, configs, "
-                    "notifications, search.\n\n"
-                    "**Bundle — $10 lifetime**\nBoth products. Every future update.\n\n"
-                    "**Robux accepted** — 600 / 400 / 1000 R$. No bank needed.\n"
-                    "Refunds within 48 h if the executor does not run on your machine.",
-                    ACCENT),
-            "components": [row(button("Buy Executor", "ticket:buy:executor", 3, "⚡"),
-                               button("Buy Bundle", "ticket:buy:bundle", 1, "💜"),
-                               button("Buy Mod Menu", "ticket:buy:modmenu", 2, "🧩"))]})
+            **embed("what's for sale", "", ACCENT,
+                    fields=[
+                        ("🧩 executor · **$10**",
+                         "1000 R$\nmanual map injection\nluau runner + editor\nconsole, files, http, hooks",
+                         True),
+                        ("📍 mod menu · **$4**",
+                         "400 R$\nin-game panel\ntabs, sliders, keybinds, esp\nanti report", True),
+                        ("🧹 spoofer · **$6**",
+                         "600 R$\nclears device + account ids\nrun before login\nbans stop following you",
+                         True),
+                        ("💎 all three · **$14**",
+                         "1400 R$ — six less than buying them apart. one license, one pc, every build "
+                         "after this, update latency same for everyone.", False),
+                    ],
+                    footer="beta is free and unstable · refund by ticket inside 48h if it never injected"),
+            "components": [row(button("Executor", "ticket:buy:executor", 2),
+                               button("All three · $14", "ticket:buy:bundle", 3),
+                               button("Menu", "ticket:buy:modmenu", 2),
+                               button("Spoofer", "ticket:buy:spoofer", 2))]})
     print("panels posted")
 
 

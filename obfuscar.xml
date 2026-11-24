@@ -1,0 +1,32 @@
+<?xml version='1.0'?>
+<!-- Obfuscar config. Renames private/internal members and encrypts string constants.
+     WPF resolves windows and controls by name from BAML, so those types stay public.
+     Settings and Identity keep their property names because they are serialised to json. -->
+<Obfuscator>
+  <Var name="InPath" value="src\app\Umbra\bin\Release\net9.0-windows\win-x64\publish" />
+  <Var name="OutPath" value="dist\protected" />
+  <Var name="KeepPublicApi" value="true" />
+  <Var name="HidePrivateApi" value="true" />
+  <Var name="RenameProperties" value="false" />
+  <Var name="RenameEvents" value="false" />
+  <Var name="RegenerateDebugInfo" value="true" />
+  <Var name="UseUnicodeNames" value="true" />
+
+  <Module file="$(InPath)\Umbra.dll">
+    <!-- XAML roots and anything the BAML names -->
+    <SkipType name="Umbra.App" />
+    <SkipType name="Umbra.MainWindow" />
+    <SkipType name="Umbra.SpooferWindow" />
+    <!-- json contract -->
+    <SkipType name="Umbra.Services.Settings" />
+    <SkipType name="Umbra.Services.Identity" />
+    <!-- public API of the services is small and documented, keep it readable -->
+    <SkipType name="Umbra.Services.SystemInfo" />
+    <SkipType name="Umbra.Services.Spoofer" />
+    <SkipType name="Umbra.Services.Elevation" />
+    <SkipType name="Umbra.Services.RobloxWeb" />
+    <SkipType name="Umbra.Services.LocationTable" />
+    <SkipType name="Umbra.Services.Library" />
+    <SkipType name="Umbra.Services.LibraryScript" />
+  </Module>
+</Obfuscator>

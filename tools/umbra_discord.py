@@ -46,12 +46,11 @@ ROLES = [
     ("Muted", 0x6B7280, False),
     ("Verified", 0x22D3EE, False),
     ("Beta", 0xA78BFA, False),
-    ("Monthly", 0x34D399, False),
-    ("Lifetime", 0xFBBF24, False),
+    ("Buyer", 0xFBBF24, False),
     ("Maintainer", 0xC084FC, True),
     ("Owner", 0x7C5CFF, True),
 ]
-RENAMED_ROLES = {"Buyer": "Lifetime"}
+RENAMED_ROLES: dict[str, str] = {}
 RENAMED_CHANNELS = {"support": "help", "media": "showcase", "verify": "rules",
                     "downloads": "builds", "vouches": "vouch"}
 # the bot holds position 1, so role ordering clamps to it until the human drags it
@@ -86,25 +85,53 @@ CHANNELS = [
     ("Support", "screen share a broken build", "voice"),
 ]
 READONLY_ROLES = ("Maintainer", "Owner")
-GATED_ROLES = ("Verified", "Beta", "Monthly", "Lifetime", "Maintainer", "Owner")
+GATED_ROLES = ("Verified", "Beta", "Buyer", "Maintainer", "Owner")
 
 NL = chr(10)
 
-WELCOME = '**Umbra**\nExecutor and mod menu for Roblox. Small, quiet, no key system, no ads, no watermark.\n\n**Start**\n1. Read #rules and react. You get Verified.\n2. Check #pricing. Free beta seats exist, paid tiers start at $4.\n3. Pay the way #pricing says and #builds unlocks.\n\nStill in development. Beta is free because it breaks. Want stable, wait or pay, both fine.\n\nTest on an alt. Keep your main clean until you trust a build.'
+WELCOME = '**Umbra**\nExecutor and mod menu for Roblox. Small, quiet, no key system, no ads, no watermark.\n\n**Start**\n1. Read #rules and react. You get Verified.\n2. Check #pricing. Free beta seats exist, paid tiers start at $4.\n3. Pay the way #pricing says and #builds unlocks.\n\nMenus ship with 14 working scripts already inside them, so it does something in any game before you write a line. Bring your own too, the editor runs real Luau.\n\nStill in development. Beta is free because it breaks. Want stable, wait or pay, both fine.\n\nTest on an alt. Keep your main clean until you trust a build.'
 
 RULES = "**Rules**\n1. One buyer, one person. Don't resell builds.\n2. Don't leak builds or keys outside this server.\n3. Support goes in #help, with the template.\n4. No spam, no DM ads.\n5. Chargeback means the role comes off until it's settled.\n6. Your account, your risk. Use an alt to test.\n\nReact below to get Verified and unlock the rest."
 
-PRICING = '**Pricing**\n**Beta** free. Limited seats, unstable, you report bugs.\n**Monthly** $4/month. Everything, cancel whenever.\n**Lifetime** $10 once. Everything, forever.\n**Founders** $6 once, first 10 people. Lifetime plus a direct line to me.\n\nPaid tiers include the executor, the mod menu, every module after this, and fixes ahead of\nfree users. Robux is fine at the current rate.\n\nTo buy, say which tier in #help. I send payment details and the exact amount. The role goes\non when it clears. Refund inside 48h if it never injected on your machine.'
+PRICING = '**What is for sale**\n**executor · $10 · 1000 R$**\nmanual map injection, real luau environment, editor, console, files, http, hooks.\n**mod menu · $4 · 400 R$**\npanel with tabs, sliders, keybinds, esp, and 14 scripts already in it. load and go, any game.\n**spoofer · $6 · 600 R$**\nclears device and account ids. run before login, a ban stops following you.\n**all three · $14 · 1400 R$**\nsix less than buying them apart. one licence, one pc, every build after this.\n\nNo subscription, no key system, no server in the middle. Robux or card, both fine.\n\nBuy with the buttons in #products, or say which one in #help. Refund inside 48h if it never\ninjected on your machine.'
 
-FAQ = "**FAQ**\n**Is it detected?** Nothing stays undetected forever. #changelog says when a build is pulled.\n**Windows?** 10 21H2+ and 11, x64.\n**Key system?** No. No loader, no ads, no watermark.\n**Main account?** Fine, but test new builds on an alt.\n**Why not a free executor?** Injection adds no module, no thread, no window, no overlay, and\nthe menu isn't a web page in a box.\n**Mobile or Mac?** Not in v1.\n**Script doesn't run?** Check #changelog, then #help with the template.\n**Hashes?** Every build has a SHA-256. If yours differs, it isn't mine."
+FAQ = ("**FAQ**\n"
+       "**Is it detected?** Nothing stays undetected forever. #changelog says when a build is pulled.\n"
+       "**Windows?** 10 21H2+ and 11, x64.\n"
+       "**Key system?** No. No loader, no ads, no watermark.\n"
+       "**How many games does it work in?** The panels are plain luau against the client, so any game the\n"
+       "executor can reach. 14 scripts ship inside the menu, and the executor runs whatever you write.\n"
+       "**Main account?** Fine, but test new builds on an alt.\n"
+       "**Why not a free executor?** Injection adds no module, no thread, no window, no overlay, and the\n"
+       "menu is not a web page in a box.\n"
+       "**Can it change my account location?** The spoofer can call the same endpoint the client uses, so\n"
+       "it genuinely writes the account. Ping and matchmaking do not move with it though.\n"
+       "**Mobile or Mac?** Not in v1.\n"
+       "**Script doesn't run?** Check #changelog, then open a ticket in #help.\n"
+       "**Hashes?** Every build has a SHA-256. If yours differs, it isn't mine.")
 
 BUILDS = "Builds go here, one message each, version in the message, SHA-256 under it. Check the hash\nbefore you run anything. SmartScreen warns because nothing is signed, the hash is the source\nof truth.\n\nBeta breaks. A build that survives a day of reports becomes stable and the older one gets\ndeleted. Don't mix files from two builds."
 
-CHANGELOG = "**v0.1.0-dev**\n```\nadded   manual map injection, nothing added to the client (0 modules, 0 threads, 0 windows)\nadded   Luau state discovery from the live interpreter\nadded   mod menu: panel, tabs, toggles, sliders, keybinds, configs\nadded   this server\nknown   executor API not wired to the runner yet, so scripts don't run\n```"
+CHANGELOG = ("**v0.2.0-dev**\n```\n"
+             "added   14 shipped scripts inside the menu, one click each, any game\n"
+             "added   spoofer window: machine guid, product id, mac, machine name, profiles, backup, restore\n"
+             "added   account location read and write, with a country id table that learns from every apply\n"
+             "added   executor library pane, two surfaces, animated layout and real type\n"
+             "fixed   closing a ticket opened a new one instead of closing it\n"
+             "fixed   closed tickets were archived forever, they are deleted now\n"
+             "fixed   the all-three button on products errored\n"
+             "known   executor API still not wired to the runner, so custom scripts do not run yet\n"
+             "known   Roblox re-detects account location over time, a change can revert\n```")
 
 HELP = '**Post this, filled in**\n```\nversion:\nwindows:\ngame or place id:\nwhat I did:\nwhat happened:\nerror text:\nempty script also fails: yes/no\n```\nOne thread per problem. Crash? Attach the newest log from %LOCALAPPDATA%\\Umbra\\logs.\nFirst reply usually inside 12h.'
 
 ANNOUNCE = '**Server is up.**\nUmbra is an executor and mod menu in development. No key system, no ads, nothing public.\n\nFive beta seats are free right now. React in #rules and post in #help with your Windows\nversion. Prices are in #pricing, founders closes at ten.'
+
+SCRIPTS = ("**Scripts**\n"
+           "Every build carries the following inside the menu already, so there is nothing to paste:\n"
+           "```\nwalk speed   super jump     infinite jump  noclip\nfull heal    respawn        anti afk       teleport to cursor\ncopy position  fullbright   free cam       spin\nunlock fps   rejoin\n```\n"
+           "All of them are plain luau and work in any game. Change one by pressing edit in the menu, it\n"
+           "drops straight into the editor. Post a fixed script here and the next build ships it.")
 
 TEXTS = {
     "welcome": WELCOME,
@@ -115,6 +142,7 @@ TEXTS = {
     "changelog": CHANGELOG,
     "help": HELP,
     "announce": ANNOUNCE,
+    "scripts": SCRIPTS,
 }
 
 def tok() -> str:

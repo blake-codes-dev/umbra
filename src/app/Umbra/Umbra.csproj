@@ -9,5 +9,19 @@
     <RootNamespace>Umbra</RootNamespace>
     <ApplicationIcon />
     <Version>0.1.0</Version>
+    <!-- lets a linux/wsl box compile the windows target, still fine on windows -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- shipped script library: the executor pane and the in-game panel share these files -->
+  <ItemGroup>
+    <None Include="..\..\luau\library\*.luau" Link="library\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\luau\menu.luau" Link="library\menu.luau" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Threading.Tasks;
 using System.Windows.Media;
 using Umbra.Services;
 
@@ -9,18 +10,83 @@ namespace Umbra;
 
 public partial class MainWindow : Window
 {
-    private readonly IBackend _backend = new MockBackend();
+    private readonly Settings _settings = Settings.Load();
+    private IBackend _backend = null!;
+    private bool _loadingUi = true;
+    private string? _trace;
 
     public MainWindow()
     {
         InitializeComponent();
-        _backend.StateChanged += OnState;
-        _backend.Output += OnOutput;
+        OptMock.IsChecked = _settings.Backend != "pipe";
+        OptLate.IsChecked = _settings.LateInject;
+        OptSuspend.IsChecked = _settings.SuspendLaunch;
+        OptVerify.IsChecked = _settings.VerifyFootprint;
+        OptElevate.IsChecked = _settings.Elevate;
+        _loadingUi = false;
+        SwapBackend();
         Loaded += (_, _) =>
         {
-            PidBox.Text = GuessPid();
-            OnOutput(new("ready. mock backend, no client needed.", false));
+            PidBox.Text = string.IsNullOrWhiteSpace(_settings.LastPid) ? GuessPid() : _settings.LastPid!;
+            OnOutput(new(_settings.Backend == "pipe"
+                ? "ready. pipe backend, needs an injected client on umbra-PID."
+                : "ready. mock backend, no client needed.", false));
         };
+        Closing += (_, _) => _settings.Save();
+        var argv = Environment.GetCommandLineArgs();
+        var traceAt = Array.IndexOf(argv, "--trace");
+        if (traceAt >= 0 && traceAt + 1 < argv.Length) _trace = argv[traceAt + 1];
+        var attachAt = Array.IndexOf(argv, "--attach");
+        if (attachAt >= 0 && attachAt + 1 < argv.Length)
+        {
+            var pid = argv[attachAt + 1];
+            var runAt = Array.IndexOf(argv, "--run");
+            Loaded += async (_, _) =>
+            {
+                PidBox.Text = pid;
+                await Task.Delay(400);
+                await _backend.AttachAsync(pid);
+                if (runAt >= 0 && runAt + 1 < argv.Length && _backend.State == InjectState.Attached)
+                {
+                    Editor.Text = argv[runAt + 1];
+                    await Task.Delay(300);
+                    Run();
+                }
+            };
+        }
+    }
+
+    private void SwapBackend()
+    {
+        if (_backend is not null)
+        {
+            _backend.StateChanged -= OnState;
+            _backend.Output -= OnOutput;
+            (_backend as IDisposable)?.Dispose();
+        }
+        _settings.Backend = OptMock.IsChecked == true ? "mock" : "pipe";
+        _backend = _settings.Backend == "pipe" ? new PipeBackend(_settings) : new MockBackend();
+        _backend.StateChanged += OnState;
+        _backend.Output += OnOutput;
+        _backend.StateChanged += state =>
+        {
+            if (state == InjectState.Attached) _settings.Save();
+        };
+        if (BackendText is not null)
+            BackendText.Text = _settings.Backend == "pipe" ? "pipe backend" : "mock backend";
+        OnState(InjectState.Detached);
+    }
+
+    private void Settings_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingUi || BackendText is null) return;
+        _settings.LateInject = OptLate.IsChecked == true;
+        _settings.SuspendLaunch = OptSuspend.IsChecked == true;
+        _settings.VerifyFootprint = OptVerify.IsChecked == true;
+        _settings.Elevate = OptElevate.IsChecked == true;
+        var wanted = OptMock.IsChecked == true ? "mock" : "pipe";
+        if (wanted != _settings.Backend) SwapBackend();
+        _settings.Save();
     }
 
     private static string GuessPid()
@@ -105,6 +171,15 @@ public partial class MainWindow : Window
                 : line.IsEcho ? (Brush)FindResource("AccentBrush") : (Brush)FindResource("DimBrush"),
         };
         ConsoleHost.Children.Add(block);
+        if (_trace is not null)
+        {
+            try
+            {
+                System.IO.File.AppendAllText(_trace,
+                    (line.IsEcho ? "> " : "") + line.Text + Environment.NewLine);
+            }
+            catch (Exception) { }
+        }
         ConsoleScroll.ScrollToEnd();
     }
 

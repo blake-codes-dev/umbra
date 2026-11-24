@@ -1,16 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "2g8AxbX2+sY=",
+  "dgSpecHash": "p+WRe2BFLtA=",
   "success": true,
   "projectFilePath": "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/Umbra.csproj",
   "expectedPackageFiles": [
-    "/config/.nuget/packages/microsoft.net.illink.tasks/9.0.23/microsoft.net.illink.tasks.9.0.23.nupkg.sha512",
     "/config/.nuget/packages/system.codedom/9.0.0/system.codedom.9.0.0.nupkg.sha512",
     "/config/.nuget/packages/system.management/9.0.0/system.management.9.0.0.nupkg.sha512",
-    "/config/.nuget/packages/microsoft.netcore.app.runtime.win-x64/9.0.23/microsoft.netcore.app.runtime.win-x64.9.0.23.nupkg.sha512",
     "/config/.nuget/packages/microsoft.windowsdesktop.app.ref/9.0.23/microsoft.windowsdesktop.app.ref.9.0.23.nupkg.sha512",
-    "/config/.nuget/packages/microsoft.windowsdesktop.app.runtime.win-x64/9.0.23/microsoft.windowsdesktop.app.runtime.win-x64.9.0.23.nupkg.sha512",
-    "/config/.nuget/packages/microsoft.aspnetcore.app.runtime.win-x64/9.0.23/microsoft.aspnetcore.app.runtime.win-x64.9.0.23.nupkg.sha512",
     "/config/.nuget/packages/microsoft.netcore.app.host.win-x64/9.0.23/microsoft.netcore.app.host.win-x64.9.0.23.nupkg.sha512"
   ],
   "logs": []

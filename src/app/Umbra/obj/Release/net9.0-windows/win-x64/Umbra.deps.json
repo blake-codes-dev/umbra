@@ -7,9 +7,8 @@
   "targets": {
     ".NETCoreApp,Version=v9.0": {},
     ".NETCoreApp,Version=v9.0/win-x64": {
-      "Umbra/0.1.0": {
+      "Umbra/0.1.1-dev": {
         "dependencies": {
-          "Microsoft.NET.ILLink.Tasks": "9.0.23",
           "System.Management": "9.0.0",
           "runtimepack.Microsoft.NETCore.App.Runtime.win-x64": "9.0.23",
           "runtimepack.Microsoft.WindowsDesktop.App.Runtime.win-x64": "9.0.23"
@@ -895,7 +894,6 @@
           }
         }
       },
-      "Microsoft.NET.ILLink.Tasks/9.0.23": {},
       "System.CodeDom/9.0.0": {},
       "System.Management/9.0.0": {
         "dependencies": {
@@ -911,7 +909,7 @@
     }
   },
   "libraries": {
-    "Umbra/0.1.0": {
+    "Umbra/0.1.1-dev": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
@@ -925,13 +923,6 @@
       "type": "runtimepack",
       "serviceable": false,
       "sha512": ""
-    },
-    "Microsoft.NET.ILLink.Tasks/9.0.23": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-6RDVUwowSAnluUb0FGYASoZMcs5cI5Ts1qx1I1NCET4eD6nUAhhw5rbN7jzRY7BYEh8mLiIWR1sZ60mBB9/61w==",
-      "path": "microsoft.net.illink.tasks/9.0.23",
-      "hashPath": "microsoft.net.illink.tasks.9.0.23.nupkg.sha512"
     },
     "System.CodeDom/9.0.0": {
       "type": "package",

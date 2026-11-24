@@ -36,8 +36,11 @@ public partial class MainWindow : Window
                 ? "ready. pipe backend, needs an injected client on umbra-PID."
                 : "ready. mock backend, no client needed.", false));
             Animate(PageHome);
-            LoadLibrary();
-            ShowAdminState();
+            if (Environment.GetEnvironmentVariable("UMBRA_MIN") != "1")
+            {
+                LoadLibrary();
+                ShowAdminState();
+            }
         };
         Closing += (_, _) => _settings.Save();
         var argv = Environment.GetCommandLineArgs();
@@ -343,7 +346,7 @@ public partial class MainWindow : Window
         var block = new TextBlock
         {
             Text = (line.IsEcho ? "> " : "") + line.Text,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = (FontFamily)FindResource("MonoFont"),
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 1, 0, 1),

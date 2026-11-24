@@ -4,7 +4,7 @@
         Title="Umbra spoofer" Width="980" Height="680" MinWidth="840" MinHeight="560"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        TextOptions.TextRenderingMode="ClearType">
+        >
 
     <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
         <Grid>
@@ -28,11 +28,11 @@
                                    VerticalAlignment="Center" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Content="&#xE921;" FontFamily="{StaticResource Glyph}" Width="44"
+                        <Button Content="&#x2013;" FontFamily="DejaVu Sans" Width="44"
                                 Background="Transparent" BorderThickness="0" Click="Min_Click" />
-                        <Button Content="&#xE922;" FontFamily="{StaticResource Glyph}" Width="44"
+                        <Button Content="&#x25A1;" FontFamily="DejaVu Sans" Width="44"
                                 Background="Transparent" BorderThickness="0" Click="Max_Click" />
-                        <Button Content="&#xE8BB;" FontFamily="{StaticResource Glyph}" Width="44"
+                        <Button Content="&#x00D7;" FontFamily="DejaVu Sans" Width="44"
                                 Background="Transparent" BorderThickness="0" Click="Close_Click" />
                     </StackPanel>
                 </Grid>
@@ -47,9 +47,10 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="Reading works now. Writing needs administrator." FontWeight="SemiBold"
+                        <TextBlock Text="Reading works now. Writing needs administrator." FontWeight="Bold"
+                                   FontFamily="DejaVu Sans"
                                    Foreground="{StaticResource WarnBrush}" />
-                        <TextBlock Style="{StaticResource Muted}"
+                        <TextBlock Style="{StaticResource Muted}" FontFamily="DejaVu Sans"
                                    Text="Machine guid, product id and mac addresses live under HKLM. Relaunch elevated, or copy the command and run it yourself." />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -76,8 +77,8 @@
                         </Grid.RowDefinitions>
 
                         <StackPanel Grid.Row="0" Margin="4,0,4,14">
-                            <TextBlock Text="Spoofer" FontSize="17" FontWeight="SemiBold"
-                                       FontFamily="{StaticResource Display}" />
+                            <TextBlock Text="Spoofer" FontSize="17" FontWeight="Bold"
+                                       FontFamily="DejaVu Sans" />
                             <TextBlock Text="device identity" Style="{StaticResource Muted}" Margin="0,2,0,0" />
                         </StackPanel>
 
@@ -85,28 +86,28 @@
                             <RadioButton x:Name="NavIdentity" Style="{StaticResource Nav}" IsChecked="True"
                                          Checked="Nav_Checked" Tag="identity">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE77B;" FontFamily="{StaticResource Glyph}" Width="22" />
+                                    <TextBlock Text="&#x25C8;" FontFamily="DejaVu Sans" Width="22" />
                                     <TextBlock Text="Identity" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton x:Name="NavNetwork" Style="{StaticResource Nav}" Checked="Nav_Checked"
                                          Tag="network">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE968;" FontFamily="{StaticResource Glyph}" Width="22" />
+                                    <TextBlock Text="&#x21C4;" FontFamily="DejaVu Sans" Width="22" />
                                     <TextBlock Text="Network" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton x:Name="NavAccount" Style="{StaticResource Nav}" Checked="Nav_Checked"
                                          Tag="account">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE774;" FontFamily="{StaticResource Glyph}" Width="22" />
+                                    <TextBlock Text="&#x25CE;" FontFamily="DejaVu Sans" Width="22" />
                                     <TextBlock Text="Account location" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton x:Name="NavProfiles" Style="{StaticResource Nav}" Checked="Nav_Checked"
                                          Tag="profiles">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE8F1;" FontFamily="{StaticResource Glyph}" Width="22" />
+                                    <TextBlock Text="&#x25A4;" FontFamily="DejaVu Sans" Width="22" />
                                     <TextBlock Text="Profiles" />
                                 </StackPanel>
                             </RadioButton>
@@ -154,7 +155,7 @@
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
                                     <TextBlock Text="CHANGE TO" Style="{StaticResource H3}" />
-                                    <ComboBox x:Name="CountryPick" Margin="0,0,0,10" />
+                                    <ComboBox x:Name="CountryPick" FontFamily="DejaVu Sans" Margin="0,0,0,10" />
                                     <StackPanel Orientation="Horizontal">
                                         <Button Style="{StaticResource Btn}" Content="Read current" Click="ReadCountry_Click" />
                                         <Button Style="{StaticResource BtnPrimary}" Content="Apply country" Margin="8,0,0,0"

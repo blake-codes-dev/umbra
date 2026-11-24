@@ -1,0 +1,14 @@
+{
+ "night": "2026-11-24",
+ "done": [
+  "observer:2026112408:{\"interval\": 1.0, \"kind\": \"observer\", \"max_seconds\": 120, \"seconds\": 60}",
+  "observer:2026112409:{\"interval\": 1.0, \"kind\": \"observer\", \"max_seconds\": 120, \"seconds\": 60}",
+  "observer:2026112409:{\"interval\": 1.0, \"kind\": \"observer\", \"max_seconds\": 120, \"seconds\": 60}",
+  "observer:2026112410:{\"interval\": 1.0, \"kind\": \"observer\", \"max_seconds\": 120, \"seconds\": 60}",
+  "observer:2026112411:{\"interval\": 1.0, \"kind\": \"observer\", \"max_seconds\": 120, \"seconds\": 60}",
+  "observer:2026112411:{\"interval\": 1.0, \"kind\": \"observer\", \"max_seconds\": 960, \"seconds\": 900}",
+  "observer:2026112412:{\"interval\": 1.0, \"kind\": \"observer\", \"max_seconds\": 120, \"seconds\": 60}"
+ ],
+ "spent": 1144.1,
+ "failures": 2
+}

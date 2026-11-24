@@ -1,0 +1,394 @@
+{
+ "measure": {
+  "pid": 19980,
+  "seconds": 10.0,
+  "interval": 0.05,
+  "samples": 64,
+  "threads": [
+   {
+    "tid": 2480,
+    "start": "0x7FF78CB45004",
+    "where": "RobloxPlayerBeta.exe+0x9365004",
+    "cpu_ms_total": 8000.0,
+    "cpu_ms_peak": 171.88,
+    "active_ratio": 1.0,
+    "burstiness": 1.4,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 2928,
+    "start": "0x7FF7837E1820",
+    "where": "RobloxPlayerBeta.exe+0x1820",
+    "cpu_ms_total": 4296.9,
+    "cpu_ms_peak": 156.25,
+    "active_ratio": 1.0,
+    "burstiness": 2.3,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 11208,
+    "start": "0x7FF7837E1820",
+    "where": "RobloxPlayerBeta.exe+0x1820",
+    "cpu_ms_total": 2375.0,
+    "cpu_ms_peak": 93.75,
+    "active_ratio": 0.921,
+    "burstiness": 2.5,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 15936,
+    "start": "0x7FF7837E1820",
+    "where": "RobloxPlayerBeta.exe+0x1820",
+    "cpu_ms_total": 2109.4,
+    "cpu_ms_peak": 93.75,
+    "active_ratio": 0.905,
+    "burstiness": 2.8,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 13324,
+    "start": "0x7FF7837E1820",
+    "where": "RobloxPlayerBeta.exe+0x1820",
+    "cpu_ms_total": 1953.1,
+    "cpu_ms_peak": 78.12,
+    "active_ratio": 0.841,
+    "burstiness": 2.5,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 23348,
+    "start": "0x7FFF639C668C",
+    "where": "nvwgf2umx.dll+0xFD668C",
+    "cpu_ms_total": 1750.0,
+    "cpu_ms_peak": 93.75,
+    "active_ratio": 0.857,
+    "burstiness": 3.4,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 17804,
+    "start": "0x7FF7837E1820",
+    "where": "RobloxPlayerBeta.exe+0x1820",
+    "cpu_ms_total": 1125.0,
+    "cpu_ms_peak": 93.75,
+    "active_ratio": 0.667,
+    "burstiness": 5.2,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 22708,
+    "start": "0x7FF7837E1820",
+    "where": "RobloxPlayerBeta.exe+0x1820",
+    "cpu_ms_total": 734.4,
+    "cpu_ms_peak": 62.5,
+    "active_ratio": 0.492,
+    "burstiness": 5.4,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 21912,
+    "start": "0x7FFF7D7D4990",
+    "where": "ntdll.dll+0x24990",
+    "cpu_ms_total": 656.2,
+    "cpu_ms_peak": 140.62,
+    "active_ratio": 0.206,
+    "burstiness": 13.5,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 25708,
+    "start": "0x7FF7837E1820",
+    "where": "RobloxPlayerBeta.exe+0x1820",
+    "cpu_ms_total": 640.6,
+    "cpu_ms_peak": 78.12,
+    "active_ratio": 0.365,
+    "burstiness": 7.7,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 26144,
+    "start": "0x7FF7837E1820",
+    "where": "RobloxPlayerBeta.exe+0x1820",
+    "cpu_ms_total": 453.1,
+    "cpu_ms_peak": 31.25,
+    "active_ratio": 0.381,
+    "burstiness": 4.3,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   },
+   {
+    "tid": 26628,
+    "start": "0x7FF7895FD9B0",
+    "where": "RobloxPlayerBeta.exe+0x5E1D9B0",
+    "cpu_ms_total": 328.1,
+    "cpu_ms_peak": 15.62,
+    "active_ratio": 0.333,
+    "burstiness": 3.0,
+    "period_s": 0.0,
+    "period_strength": 0.0
+   }
+  ],
+  "thread_count": 135,
+  "process_cpu_ms_total": 26531.2,
+  "regions_tracked": 4549,
+  "regions_flipped": 58,
+  "region_flips": [
+   {
+    "base": "0x7ff789a39000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 8192,
+    "flips": 3,
+    "transitions": [
+     {
+      "at": 3.395,
+      "from": 32,
+      "to": 1
+     },
+     {
+      "at": 4.022,
+      "from": 1,
+      "to": 32
+     },
+     {
+      "at": 9.787,
+      "from": 32,
+      "to": 1
+     }
+    ]
+   },
+   {
+    "base": "0x7ff789b04000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 8192,
+    "flips": 3,
+    "transitions": [
+     {
+      "at": 3.395,
+      "from": 32,
+      "to": 1
+     },
+     {
+      "at": 4.022,
+      "from": 1,
+      "to": 32
+     },
+     {
+      "at": 9.787,
+      "from": 32,
+      "to": 1
+     }
+    ]
+   },
+   {
+    "base": "0x7ff785354000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 77824,
+    "flips": 2,
+    "transitions": [
+     {
+      "at": 1.015,
+      "from": 32,
+      "to": 1
+     },
+     {
+      "at": 1.661,
+      "from": 1,
+      "to": 32
+     }
+    ]
+   },
+   {
+    "base": "0x7ff785567000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 8192,
+    "flips": 2,
+    "transitions": [
+     {
+      "at": 1.016,
+      "from": 32,
+      "to": 1
+     },
+     {
+      "at": 1.33,
+      "from": 1,
+      "to": 32
+     }
+    ]
+   },
+   {
+    "base": "0x7ff786944000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 16384,
+    "flips": 2,
+    "transitions": [
+     {
+      "at": 4.165,
+      "from": 32,
+      "to": 1
+     },
+     {
+      "at": 4.625,
+      "from": 1,
+      "to": 32
+     }
+    ]
+   },
+   {
+    "base": "0x7ff7869d9000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 8192,
+    "flips": 2,
+    "transitions": [
+     {
+      "at": 4.165,
+      "from": 32,
+      "to": 1
+     },
+     {
+      "at": 4.625,
+      "from": 1,
+      "to": 32
+     }
+    ]
+   },
+   {
+    "base": "0x7ff788623000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 12288,
+    "flips": 2,
+    "transitions": [
+     {
+      "at": 5.4,
+      "from": 32,
+      "to": 1
+     },
+     {
+      "at": 6.505,
+      "from": 1,
+      "to": 32
+     }
+    ]
+   },
+   {
+    "base": "0x7ff788634000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 8192,
+    "flips": 2,
+    "transitions": [
+     {
+      "at": 5.4,
+      "from": 32,
+      "to": 1
+     },
+     {
+      "at": 6.505,
+      "from": 1,
+      "to": 32
+     }
+    ]
+   },
+   {
+    "base": "0x7ff788637000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 12288,
+    "flips": 2,
+    "transitions": [
+     {
+      "at": 5.4,
+      "from": 32,
+      "to": 1
+     },
+     {
+      "at": 6.505,
+      "from": 1,
+      "to": 32
+     }
+    ]
+   },
+   {
+    "base": "0x7ff789076000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 8192,
+    "flips": 1,
+    "transitions": [
+     {
+      "at": 0.088,
+      "from": 32,
+      "to": 1
+     }
+    ]
+   },
+   {
+    "base": "0x7ff78907a000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 8192,
+    "flips": 1,
+    "transitions": [
+     {
+      "at": 0.088,
+      "from": 32,
+      "to": 1
+     }
+    ]
+   },
+   {
+    "base": "0x7ff784ed5000",
+    "module": "RobloxPlayerBeta.exe",
+    "size": 32768,
+    "flips": 1,
+    "transitions": [
+     {
+      "at": 1.014,
+      "from": 32,
+      "to": 1
+     }
+    ]
+   }
+  ],
+  "handle_count": {
+   "min": 1656,
+   "max": 1658,
+   "delta": 0
+  },
+  "working_set_mb": {
+   "min": 2775.1,
+   "max": 2784.1,
+   "delta_mb": 0.9
+  }
+ },
+ "decoy": {
+  "decoys": [
+   {
+    "size": 4096,
+    "address": "0x24affdb0000",
+    "hits": 0,
+    "first_hits": [],
+    "rearms": 0
+   },
+   {
+    "size": 65536,
+    "address": "0x24b005d0000",
+    "hits": 0,
+    "first_hits": [],
+    "rearms": 0
+   },
+   {
+    "size": 1048576,
+    "address": "0x24b005e0000",
+    "hits": 0,
+    "first_hits": [],
+    "rearms": 0
+   }
+  ]
+ }
+}

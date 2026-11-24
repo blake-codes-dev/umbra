@@ -1,0 +1,128 @@
+{
+ "module": "RobloxPlayerBeta.exe",
+ "image": "C:\\Users\\blake\\.deepai-code\\scratch\\2026-11-23-can-you-build-a-loader-4f37ff4c\\dump\\merged-all.bin",
+ "text_va": "0x1000",
+ "text_size": 105075420,
+ "scan_seconds": 1.02,
+ "generated": "2026-11-24T09:56:01",
+ "patterns": [
+  {
+   "name": "luaG_arith",
+   "string_va": "0x72c9b98",
+   "func_va": "0x2564790",
+   "xor_va": "0x25649b3",
+   "sig": "26 D8 70 FE 79 6C D1 2A BE 15 69 CA 36 EA 2C 5B 30 A8 92 B4 8A 76 B2 BF 28 4E 5A 8D 28 DC 36 BD",
+   "hits": 1,
+   "note": "live-derived"
+  },
+  {
+   "name": "luaG_compare",
+   "string_va": "0x72c9cb0",
+   "func_va": null,
+   "hits": 0,
+   "note": "no rip-relative reference"
+  },
+  {
+   "name": "luaG_concat",
+   "string_va": "0x72c9bf8",
+   "func_va": null,
+   "hits": 0,
+   "note": "no rip-relative reference"
+  },
+  {
+   "name": "luaG_index_error",
+   "string_va": "0x72c9c50",
+   "func_va": "0x2585900",
+   "xor_va": "0x25859c8",
+   "sig": "4E 02 EA 76 CF 6D 72 ED 56 C0 49 A2 02 0C BE 71 06 AD 2B 63 C6 C9 88 3D 39 04 35 19 9B DC BD 98",
+   "hits": 1,
+   "note": "live-derived"
+  },
+  {
+   "name": "luaG_index_error_msg",
+   "string_va": "0x72c9c50",
+   "func_va": "0x25859c8",
+   "hits": 1,
+   "sig": "9D E3 4C 15 49 42 A0 FF 50 62 16 45 46 AA 9E 8C 1C 1D 70 70 F7 3F AF E6 3A 76 90 14 1F 77 76 BC",
+   "note": "live-derived"
+  },
+  {
+   "name": "luaG_nil_index",
+   "string_va": "0x72c9a10",
+   "func_va": null,
+   "hits": 0,
+   "note": "no rip-relative reference"
+  },
+  {
+   "name": "luaG_runerror",
+   "string_va": "0x72c9118",
+   "func_va": "0x77dfb0",
+   "xor_va": "0x77e466",
+   "sig": "55 C2 63 BC 5B 63 B1 60 AC 3D AA 81 3C 67 4D 7A A9 EC 57 28 4B 2F 52 EA 55 AF A4 3A 80 C5 E2 B9",
+   "hits": 1,
+   "note": "live-derived"
+  },
+  {
+   "name": "luaG_runerror_handler",
+   "string_va": "0x72c9208",
+   "func_va": "0x2557890",
+   "xor_va": "0x2559451",
+   "sig": "48 89 54 24 10 53 55 56 57 41 54 41 56 48 83 EC 48 0F B6 69 04 4C 8B F1 48 8B 59 68 33 FF 48 0F",
+   "hits": 1,
+   "note": "live-derived"
+  },
+  {
+   "name": "luaG_typeerror_call",
+   "string_va": "0x72c9d08",
+   "func_va": "0x2585a70",
+   "xor_va": "0x2585acc",
+   "sig": "B4 8A 2B 12 71 E4 F3 C6 AC 17 A7 EC AF BF 0E 92 E8 F9 FC 90 31 E7 B5 1D 31 C7 68 74 F6 1D B4 F7",
+   "hits": 1,
+   "note": "live-derived"
+  },
+  {
+   "name": "luaG_typeerror_index",
+   "string_va": "0x72c9c70",
+   "func_va": null,
+   "hits": 0,
+   "note": "no rip-relative reference"
+  },
+  {
+   "name": "luaH_key_named",
+   "string_va": "0x72c9d38",
+   "func_va": "0x25859e3",
+   "hits": 1,
+   "sig": "14 1F 77 76 BC 41 D8 D4 E4 B0 4D 04 71 B9 7C 5A EF E0 B9 44 09 F8 DE A7 83 19 EC B8 EB CB C4 7A",
+   "note": "live-derived"
+  },
+  {
+   "name": "luaO_tostr_concat",
+   "string_va": "0x72c9b4c",
+   "func_va": "0x2585354",
+   "hits": 1,
+   "sig": "5A CF 78 D5 94 78 D9 7E 61 F6 59 6D 3A 06 11 E7 51 28 75 48 08 DB 48 38 42 A8 3E 77 09 14 9E 8B",
+   "note": "live-derived"
+  },
+  {
+   "name": "luau_execute_dispatch",
+   "func_va": "0x797395",
+   "hits": 1,
+   "sig": "FF 24 FB 41 88 00 48 8B 41 50 49 89 40 18 4C 89 41 50 48 83 83 80 00 00 00 F0 49 83 C6 10 E9 E0",
+   "note": "live-derived"
+  },
+  {
+   "name": "luau_execute_dispatch_b",
+   "func_va": "0x410b0cd",
+   "hits": 1,
+   "sig": "FF 24 FB 41 88 00 48 8B 41 50 49 89 40 18 4C 89 41 50 48 83 87 80 00 00 00 F0 48 83 C3 10 E9 56",
+   "note": "live-derived"
+  },
+  {
+   "name": "luau_execute_dispatch_c",
+   "func_va": "0x58bc29d",
+   "hits": 1,
+   "sig": "A0 53 3C 6C B3 14 68 E4 4A BE BB 4F 09 C2 FB AA D2 9F D5 22 0A 03 2B 4F 48 97 D6 09 FC B3 5D B8",
+   "note": "live-derived"
+  }
+ ]
+}

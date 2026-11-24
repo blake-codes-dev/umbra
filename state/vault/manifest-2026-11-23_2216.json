@@ -1,0 +1,25 @@
+{
+ "at": "2026-11-23T22:16:21",
+ "totals": {
+  "Documents": {
+   "files": 1296,
+   "bytes": 82512953
+  },
+  "Downloads": {
+   "files": 15,
+   "bytes": 3194276127
+  },
+  "Videos": {
+   "files": 2,
+   "bytes": 710
+  },
+  "Music": {
+   "files": 1,
+   "bytes": 520
+  },
+  "OneDrive": {
+   "files": 2659,
+   "bytes": 870469677
+  }
+ }
+}

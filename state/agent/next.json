@@ -1,0 +1,15 @@
+{
+ "next": "M1: install/locate a native toolchain, build the 20 KB stub DLL, manual map from host",
+ "done": [
+  "M0 seed: 2 unique sigs",
+  "multi-dump merge works (518 pages)",
+  "vault snapshot+backup",
+  "queue+rules"
+ ],
+ "blocked": [
+  "BIOS AC-restore off -> power loss leaves the machine off",
+  "no auto-login (Microsoft account password unknown)",
+  "no elevated token: HKLM hardening pending"
+ ],
+ "updated": "2026-11-24T08:31:57"
+}

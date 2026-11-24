@@ -1,0 +1,13 @@
+secrets/
+__pycache__/
+*.pyc
+dist/
+dump/
+models/
+state/tmp/
+state/night/artifacts/
+state/llama.log
+state/*.pid
+*.obj
+src/native/*.map
+tools/llama/

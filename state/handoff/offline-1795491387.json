@@ -1,0 +1,10 @@
+{
+ "at": "2026-11-23T22:36:27",
+ "to": "qwen",
+ "queued": [
+  "night_runner plan",
+  "qwen playbooks",
+  "observer artifacts"
+ ],
+ "note": "qwen takes over; agent offline until 08:00"
+}

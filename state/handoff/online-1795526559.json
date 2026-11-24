@@ -1,0 +1,10 @@
+{
+ "at": "2026-11-24T08:22:39",
+ "to": "agent",
+ "queued": [
+  "night_runner plan",
+  "qwen playbooks",
+  "observer artifacts"
+ ],
+ "note": "agent takes over; read MORNING.md + state/supervisor/health.json"
+}

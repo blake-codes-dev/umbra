@@ -1,0 +1,43 @@
+{
+ "at": "2026-11-24T12:49:18",
+ "checks": {
+  "mode": {
+   "online": true
+  },
+  "disk": {
+   "free_gb": 37.4
+  },
+  "heartbeats": {
+   "night_runner": 10.9,
+   "intel": 1025.4,
+   "qwen": 832.6,
+   "agent": 39.3
+  },
+  "vault": {
+   "added": 0,
+   "removed": 0,
+   "changed": 0,
+   "at": "2026-11-23T22:16:21"
+  },
+  "locks": {
+   "cleared": []
+  },
+  "ollama": {
+   "up": true
+  },
+  "app": {
+   "running": true,
+   "hung": false,
+   "doctor": "signed_in"
+  },
+  "client": {
+   "running": true
+  },
+  "tasks": {
+   "missing": []
+  },
+  "python_workers": 9
+ },
+ "actions": [],
+ "app_hung_streak": 0
+}

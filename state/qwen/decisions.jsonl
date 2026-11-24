@@ -1,0 +1,48 @@
+{"at": "2026-11-23T20:40:46", "online": false, "action": "start_roblox", "reason": "Game client is closed; telemetry needs live client for comparison.", "result": {"started": false, "reason": "already running"}, "source": "qwen"}
+{"at": "2026-11-23T20:41:28", "online": false, "action": "ensure_tasks", "reason": "Missing scheduled tasks: RobloxSupervisor, RobloxQwenShift", "result": {"missing": []}, "source": "qwen"}
+{"at": "2026-11-23T20:56:01", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-23T21:11:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-23T21:26:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-23T21:41:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-23T21:56:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-23T22:11:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-23T22:26:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-23T22:41:31", "online": false, "action": "report_only", "reason": "No critical issues detected; telemetry and services are operational.", "result": {"ok": true}, "source": "qwen"}
+{"at": "2026-11-23T22:56:39", "online": false, "action": "report_only", "reason": "No critical issues detected; telemetry and services are operational.", "result": {"ok": true}, "source": "qwen"}
+{"at": "2026-11-24T08:23:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T08:26:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T08:38:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T08:41:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T08:53:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T08:56:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T09:08:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T09:11:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T09:23:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T09:26:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T09:38:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T09:40:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T09:41:01", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T09:55:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T09:56:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T10:10:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T10:11:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T10:25:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T10:26:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T10:40:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T10:41:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T10:55:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T10:56:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T11:10:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T11:11:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T11:25:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T11:26:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T11:40:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T11:41:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T11:55:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T11:56:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T12:10:10", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T12:11:02", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T12:25:11", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T12:26:03", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T12:40:11", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}
+{"at": "2026-11-24T12:41:03", "online": true, "action": "handoff_to_agent", "reason": "internet is up; qwen stands down"}

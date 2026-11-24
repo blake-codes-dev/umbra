@@ -1,0 +1,14 @@
+{
+ "generated": "2026-11-24T12:01:11",
+ "observer": {
+  "seconds": 60.0,
+  "sweeps": 51,
+  "median_gap": 1.06,
+  "regions_flipped": 897,
+  "decoy_hits": 0,
+  "cpu_ms": 30687.5
+ },
+ "decoy": null,
+ "jobs": 7,
+ "failures": 2
+}

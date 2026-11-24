@@ -1,0 +1,10 @@
+{
+  "name": "loader",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedFirst": {
+      "$className": "ReplicatedFirst",
+      "$path": "src/ReplicatedFirst"
+    }
+  }
+}

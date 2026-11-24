@@ -1,31 +1,25 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\blake\\.deepai-code\\scratch\\2026-11-23-can-you-build-a-loader-4f37ff4c\\src\\app\\Umbra\\Umbra.csproj": {}
+    "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/Umbra.csproj": {}
   },
   "projects": {
-    "C:\\Users\\blake\\.deepai-code\\scratch\\2026-11-23-can-you-build-a-loader-4f37ff4c\\src\\app\\Umbra\\Umbra.csproj": {
+    "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/Umbra.csproj": {
       "version": "0.1.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\blake\\.deepai-code\\scratch\\2026-11-23-can-you-build-a-loader-4f37ff4c\\src\\app\\Umbra\\Umbra.csproj",
+        "projectUniqueName": "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/Umbra.csproj",
         "projectName": "Umbra",
-        "projectPath": "C:\\Users\\blake\\.deepai-code\\scratch\\2026-11-23-can-you-build-a-loader-4f37ff4c\\src\\app\\Umbra\\Umbra.csproj",
-        "packagesPath": "C:\\Users\\blake\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\blake\\.deepai-code\\scratch\\2026-11-23-can-you-build-a-loader-4f37ff4c\\src\\app\\Umbra\\obj\\",
+        "projectPath": "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/Umbra.csproj",
+        "packagesPath": "/config/.nuget/packages/",
+        "outputPath": "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/obj/",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-        ],
         "configFilePaths": [
-          "C:\\Users\\blake\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "/config/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0-windows"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -44,11 +38,17 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "9.0.200"
+        "SdkAnalysisLevel": "9.0.300"
       },
       "frameworks": {
         "net9.0-windows7.0": {
           "targetAlias": "net9.0-windows",
+          "dependencies": {
+            "System.Management": {
+              "target": "Package",
+              "version": "[9.0.0, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",
@@ -60,6 +60,16 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.NETCore.App.Host.win-x64",
+              "version": "[9.0.23, 9.0.23]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[9.0.23, 9.0.23]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
@@ -68,7 +78,12 @@
               "privateAssets": "none"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.200/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/tmp/dotnet/sdk/9.0.321/PortableRuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "win-x64": {
+          "#import": []
         }
       }
     }

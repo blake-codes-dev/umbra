@@ -84,7 +84,7 @@ public partial class MainWindow : Window
         OnState(InjectState.Detached);
     }
 
-    private void Settings_Changed(object sender, RoutedEventArgs e)
+    public void Settings_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingUi || BackendText is null) return;
         _settings.LateInject = OptLate.IsChecked == true;
@@ -102,7 +102,7 @@ public partial class MainWindow : Window
     }
 
     // ---------------------------------------------------------------- chrome
-    private void TitleBar_Drag(object sender, MouseButtonEventArgs e)
+    public void TitleBar_Drag(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2)
         {
@@ -112,12 +112,12 @@ public partial class MainWindow : Window
         if (e.ButtonState == MouseButtonState.Pressed) DragMove();
     }
 
-    private void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
-    private void Max_Click(object sender, RoutedEventArgs e) =>
+    public void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    public void Max_Click(object sender, RoutedEventArgs e) =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    public void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void OpenSpoofer_Click(object sender, RoutedEventArgs e)
+    public void OpenSpoofer_Click(object sender, RoutedEventArgs e)
     {
         if (_spoofer is { IsLoaded: true })
         {
@@ -129,7 +129,7 @@ public partial class MainWindow : Window
         _spoofer.Show();
     }
 
-    private void OpenMenu_Click(object sender, RoutedEventArgs e)
+    public void OpenMenu_Click(object sender, RoutedEventArgs e)
     {
         var path = FindRepoFile("src", "luau", "menu.luau");
         if (path is null)
@@ -160,7 +160,7 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private void Nav_Checked(object sender, RoutedEventArgs e)
+    public void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (PageHome is null) return;
         var tag = (sender as RadioButton)?.Tag as string ?? "home";
@@ -179,7 +179,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Fade and rise, 180 ms. Every page change, never a snap.</summary>
-    private static void Animate(UIElement page)
+    public static void Animate(UIElement page)
     {
         var transform = new TranslateTransform(0, 10);
         page.RenderTransform = transform;
@@ -264,7 +264,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LibSearch_Changed(object sender, TextChangedEventArgs e)
+    public void LibSearch_Changed(object sender, TextChangedEventArgs e)
     {
         if (LibHost is null) return;
         var needle = LibSearch.Text.Trim().ToLowerInvariant();
@@ -287,13 +287,13 @@ public partial class MainWindow : Window
         PromptBox.Text = Elevation.Prompt();
     }
 
-    private void CopyPrompt_Click(object sender, RoutedEventArgs e)
+    public void CopyPrompt_Click(object sender, RoutedEventArgs e)
     {
         Elevation.CopyPrompt();
         AdminText.Text = "command copied to the clipboard.";
     }
 
-    private void Elevate_Click(object sender, RoutedEventArgs e)
+    public void Elevate_Click(object sender, RoutedEventArgs e)
     {
         if (Elevation.Relaunch()) return;
         Elevation.CopyPrompt();
@@ -301,7 +301,7 @@ public partial class MainWindow : Window
     }
 
     // ---------------------------------------------------------------- attach
-    private async void Attach_Click(object sender, RoutedEventArgs e)
+    public async void Attach_Click(object sender, RoutedEventArgs e)
     {
         AttachBtn.IsEnabled = false;
         await _backend.AttachAsync(PidBox.Text.Trim());
@@ -314,7 +314,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Detach_Click(object sender, RoutedEventArgs e)
+    public void Detach_Click(object sender, RoutedEventArgs e)
     {
         _backend.Detach();
         DetachBtn.IsEnabled = false;
@@ -374,15 +374,15 @@ public partial class MainWindow : Window
         ConsoleScroll.ScrollToEnd();
     }
 
-    private void Run_Click(object sender, RoutedEventArgs e) => Run();
-    private void ClearEditor_Click(object sender, RoutedEventArgs e) => Editor.Clear();
-    private void ClearConsole_Click(object sender, RoutedEventArgs e)
+    public void Run_Click(object sender, RoutedEventArgs e) => Run();
+    public void ClearEditor_Click(object sender, RoutedEventArgs e) => Editor.Clear();
+    public void ClearConsole_Click(object sender, RoutedEventArgs e)
     {
         ConsoleHost.Children.Clear();
         ConsoleHostWide.Children.Clear();
     }
 
-    private void Editor_KeyDown(object sender, KeyEventArgs e)
+    public void Editor_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
         {

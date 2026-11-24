@@ -1,12 +1,18 @@
 # Build and release — the prompts a human runs
 
-This container has no Windows interop (no `dotnet`, no `powershell.exe`), so compiling and the
-client-side checks happen on the desktop. Everything below is a **prompt to paste**, one per job.
-Nothing here needs a decision from the agent.
+The app now **compiles and publishes in this container** (`tools/release.sh`, .NET 9 installed to
+`/tmp/dotnet`, WPF cross-target via `EnableWindowsTargeting`). What still needs Windows is running
+the exe and any live client test.
 
-## 1. Build the app
+```bash
+bash tools/release.sh 0.1.0-dev      # build, obfuscate, single-file zip, hash
+```
 
-Needs the .NET 9 SDK, run in an elevated terminal **from the repo root**.
+Everything below is the same job by hand, plus the parts that are Windows-only.
+
+## 1. Build the app by hand (Windows)
+
+Only needed if the container recipe breaks. Needs the .NET 9 SDK, elevated, **from the repo root**.
 
 ```powershell
 cd src\app\Umbra
@@ -21,6 +27,10 @@ If publish fails on `System.Management` in single-file mode, drop
 `-p:IncludeNativeLibrariesForSelfExtract=true` first. If it fails on the `library\*.luau` copy
 items, the folder moved — fix the `..\..\luau\library` glob in `Umbra.csproj` rather than
 deleting the items.
+
+Note for anyone editing XAML: **event handlers are `public` on purpose.** BAML resolves them by
+name at load, so a renamed private handler is a `MissingMethodException` at runtime. `obfuscar.xml`
+keeps the window and services types unrenamed for the same reason.
 
 ## 2. Obfuscate
 

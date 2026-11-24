@@ -3,8 +3,10 @@
      WPF resolves windows and controls by name from BAML, so those types stay public.
      Settings and Identity keep their property names because they are serialised to json. -->
 <Obfuscator>
-  <Var name="InPath" value="src\app\Umbra\bin\Release\net9.0-windows\win-x64\publish" />
-  <Var name="OutPath" value="dist\protected" />
+  <Var name="InPath" value="src/app/Umbra/bin/Release/net9.0-windows/win-x64" />
+  <!-- ref packs: needs to resolve WPF when run off Windows -->
+  <Var name="ExtraFrameworkFolders" value="/config/.nuget/packages/microsoft.windowsdesktop.app.ref/9.0.23/ref/net9.0;/config/.nuget/packages/microsoft.netcore.app.ref/9.0.23/ref/net9.0" />
+  <Var name="OutPath" value="dist/protected" />
   <Var name="KeepPublicApi" value="true" />
   <Var name="HidePrivateApi" value="true" />
   <Var name="RenameProperties" value="false" />
@@ -12,7 +14,7 @@
   <Var name="RegenerateDebugInfo" value="true" />
   <Var name="UseUnicodeNames" value="true" />
 
-  <Module file="$(InPath)\Umbra.dll">
+  <Module file="$(InPath)/Umbra.dll">
     <!-- XAML roots and anything the BAML names -->
     <SkipType name="Umbra.App" />
     <SkipType name="Umbra.MainWindow" />

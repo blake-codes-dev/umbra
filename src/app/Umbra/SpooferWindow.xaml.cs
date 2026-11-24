@@ -25,7 +25,7 @@ public partial class SpooferWindow : Window
         Loaded += (_, _) => Animate(PageIdentity);
     }
 
-    private void TitleBar_Drag(object sender, MouseButtonEventArgs e)
+    public void TitleBar_Drag(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2)
         {
@@ -35,12 +35,12 @@ public partial class SpooferWindow : Window
         if (e.ButtonState == MouseButtonState.Pressed) DragMove();
     }
 
-    private void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
-    private void Max_Click(object sender, RoutedEventArgs e) =>
+    public void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    public void Max_Click(object sender, RoutedEventArgs e) =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    public void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void Nav_Checked(object sender, RoutedEventArgs e)
+    public void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (PageIdentity is null) return;
         var tag = (sender as RadioButton)?.Tag as string ?? "identity";
@@ -59,7 +59,7 @@ public partial class SpooferWindow : Window
     }
 
     /// <summary>Fade and rise, the same entrance the executor uses. Never a snap.</summary>
-    private static void Animate(UIElement page)
+    public static void Animate(UIElement page)
     {
         var transform = new TranslateTransform(0, 10);
         page.RenderTransform = transform;
@@ -216,7 +216,7 @@ public partial class SpooferWindow : Window
         }
     }
 
-    private void NewMacs_Click(object sender, RoutedEventArgs e)
+    public void NewMacs_Click(object sender, RoutedEventArgs e)
     {
         _wanted.Macs = _wanted.Macs.ConvertAll(_ => Spoofer.Mac());
         BuildMacs();
@@ -224,7 +224,7 @@ public partial class SpooferWindow : Window
         StatusText.Text = "macs regenerated, press apply to write them";
     }
 
-    private void Apply_Click(object sender, RoutedEventArgs e)
+    public void Apply_Click(object sender, RoutedEventArgs e)
     {
         if (!_admin)
         {
@@ -236,7 +236,7 @@ public partial class SpooferWindow : Window
         StatusText.Text = Summarise(results);
     }
 
-    private void Restore_Click(object sender, RoutedEventArgs e)
+    public void Restore_Click(object sender, RoutedEventArgs e)
     {
         if (!_admin)
         {
@@ -261,13 +261,13 @@ public partial class SpooferWindow : Window
             : $"{ok}/{results.Count} written";
     }
 
-    private void CopyPrompt_Click(object sender, RoutedEventArgs e)
+    public void CopyPrompt_Click(object sender, RoutedEventArgs e)
     {
         Elevation.CopyPrompt();
         StatusText.Text = "command copied, paste it into a terminal";
     }
 
-    private void Elevate_Click(object sender, RoutedEventArgs e)
+    public void Elevate_Click(object sender, RoutedEventArgs e)
     {
         if (!Elevation.Relaunch())
         {
@@ -276,7 +276,7 @@ public partial class SpooferWindow : Window
         }
     }
 
-    private async void ReadCountry_Click(object sender, RoutedEventArgs e)
+    public async void ReadCountry_Click(object sender, RoutedEventArgs e)
     {
         using var web = new RobloxWeb();
         if (!web.LoadCookie(out var where))
@@ -296,7 +296,7 @@ public partial class SpooferWindow : Window
         if (!CountryPick.Items.Contains(country)) CountryPick.Items.Add(country);
     }
 
-    private async void SetCountry_Click(object sender, RoutedEventArgs e)
+    public async void SetCountry_Click(object sender, RoutedEventArgs e)
     {
         var name = CountryPick.SelectedItem as string ?? CountryPick.Text;
         var resolved = LocationTable.Resolve(name);
@@ -318,7 +318,7 @@ public partial class SpooferWindow : Window
         if (after.ok) LocationTable.Learn(after.id, after.country);
     }
 
-    private void SaveProfile_Click(object sender, RoutedEventArgs e)
+    public void SaveProfile_Click(object sender, RoutedEventArgs e)
     {
         var name = ProfileName.Text.Trim();
         if (name.Length == 0)

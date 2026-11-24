@@ -1,0 +1,17 @@
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/Umbra.pdb
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/antiafk.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/copypos.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/fpsunlock.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/freecam.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/fullbright.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/heal.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/infjump.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/jump.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/noclip.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/rejoin.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/reset.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/speed.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/spin.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/tpcursor.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/menu.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/Umbra.exe

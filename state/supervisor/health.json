@@ -1,5 +1,5 @@
 {
- "at": "2026-11-24T13:19:48",
+ "at": "2026-11-24T13:24:54",
  "checks": {
   "mode": {
    "online": true
@@ -9,9 +9,9 @@
   },
   "heartbeats": {
    "night_runner": 0.4,
-   "intel": 1055.9,
-   "qwen": 863.1,
-   "agent": 69.8
+   "intel": 1061.0,
+   "qwen": 868.2,
+   "agent": 74.9
   },
   "vault": {
    "added": 0,
@@ -36,7 +36,7 @@
   "tasks": {
    "missing": []
   },
-  "python_workers": 9
+  "python_workers": 8
  },
  "actions": [],
  "app_hung_streak": 0

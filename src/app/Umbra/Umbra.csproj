@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>Umbra</AssemblyName>
+    <RootNamespace>Umbra</RootNamespace>
+    <ApplicationIcon />
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

@@ -266,6 +266,8 @@ Realistic: **~5–7 weeks** solo at a sustainable pace; the schedule risk is ent
 | Yield/thread model mistakes → hangs | Medium | Medium | Runner architecture; scripts always `task.spawn`ed |
 | `hookfunction` corrupts closures | Medium | Client crash | Pinned headers, upvalue copy, probe after hook, revert on failure |
 | Account bans from tamper detection | Medium | User-visible | Throwaway test account; conservative hooks; document it |
+| Obfuscation breaks XAML at runtime | Medium | Build unusable | Event handlers stay public, window types excluded from renaming, control build kept un-obfuscated for A/B |
+| Account location reverts or is refused | High | Small | Documented honestly, read-back after every apply, never sold as a vpn |
 | Scope creep (decompiler, drawing, hub) | Certain | Weeks | §1 scope fence; `decompile` is an explicit stub in v1 |
 
 ---

@@ -77,6 +77,11 @@ alt-tab · two clients · deliberate crash · verify recovery. Stealth: after in
 `observer.py` sweep rate, region count, thread count, module list against the clean baseline;
 require no new module, no new thread outside modules, no orphan image.
 
+**Spoofer:** apply on a clean alt, restart the client, dump `appStorage.json` and the observer
+snapshot, check which fields Roblox echoes back; restore and diff byte-for-byte against the
+backup; apply with a stale cookie; apply a country with no cookie; confirm an id that Roblox
+rejects surfaces as a message rather than a silent no-op.
+
 **Product:** download without role (expect 403) · share build with non-member (documented) · post
 as @everyone in `#downloads` · invite survives join/leave · rate-limit behaviour under spam.
 

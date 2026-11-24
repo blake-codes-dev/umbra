@@ -1,26 +1,26 @@
 # BRIEF — read this first (generated, do not hand-edit)
-generated 2026-11-24 12:35 · root C:\Users\blake\.deepai-code\scratch\2026-11-23-can-you-build-a-loader-4f37ff4c
-mode: ONLINE since 08:22:39 · disk 41 GB free
+generated 2026-11-24 12:54 · root C:\Users\blake\.deepai-code\scratch\2026-11-23-can-you-build-a-loader-4f37ff4c
+mode: ONLINE since 08:22:39 · disk 35 GB free
 
 ## liveness
 app 8 proc · roblox 0 proc · ollama 1 proc · hung streak 0
-heartbeats: night 0m · qwen 819m · agent — · intel 1012m
+heartbeats: night 0m · qwen 838m · agent — · intel 1031m
 tasks: RobloxNightRunner=Ready · RobloxSupervisor=Running · RobloxQwenShift=Running
 
 ## last jobs
-09:40:10 observer  exit 1   0s
 10:26:20 observer  ok       61s
 11:12:52 observer  ok       61s
 11:59:18 observer  ok       901s
 12:01:08 observer  ok       61s
+12:54:21 observer  exit 1   901s
 
 ## qwen dispatcher
 actions hour 0/6 · night 0/40
-12:25:11 handoff_to_agent (internet is up; qwen stands down)
-12:26:03 handoff_to_agent (internet is up; qwen stands down)
+12:40:11 handoff_to_agent (internet is up; qwen stands down)
+12:41:03 handoff_to_agent (internet is up; qwen stands down)
 
 ## next
-{"next": "M1: install/locate a native toolchain, build the 20 KB stub DLL, manual map from host", "done": ["M0 seed: 2 unique sigs", "multi-dump merge works (518 pages)", "vault snapshot+backup", "queue+rules"], "blocked": ["BIOS AC-restore off -> power loss leaves the machine off", "no auto-login (Microsoft account password unknown)", "no elevated token: HKLM hardening pending"], "updated": "2026-11-24T08:31:57"}
+{"next": ["M2 close: call luaB_print with one string argument so the log line is distinctive, then confirm the exact 'UMBRA' line in AppData/Local/Roblox/logs", "add a thunk variant that stores rax into the bus so calls can return values (proves execution without the log)", "make the state finder wait for a thread executing client .text (pick_thread) and retry on OpenProcess denial", "then M3: keep the found lua_State in the stub, push a Luau runner closure, and drive the Heartbeat queue", "re-baseline footprint_audit for the injected state; unmap stale images on re-inject"], "quirks": ["GDK activation (shell:AppsFolder\\...!Game) currently dies ~12 s after start; roblox:// starts the legacy client instead", "legacy client logs to AppData/Local/Roblox/logs, GDK to AppData/Local/RobloxPCGDK/logs - luacall.py now reads the legacy dir", "Hyperion denies PROCESS_ALL_ACCESS in bursts; retry, do not conclude the client is gone", "hard-killing the client leaves a stale mutex: the next instance sits in waitForNewPlayerProcess and exits"]}
 
 ## milestones (PLAN.md §10)
 | M0 | Toolchain + binary recon: PE dumper (Python, from process memory — disk is ACL-blocked), pattern harness, `patterns.json` seed | every signatur
@@ -40,18 +40,18 @@ drift +0 -0 ~0 · backup D:\UmbraVault\2026-11-23_2212
 09:41:06 issue {'issues': ['DeepAI Code was not running (restarted)']}
 
 ## DIRECTIVES (standing human instructions)
-- Products: (1) Umbra Executor, (2) Umbra Mod Menu (Luau hub/overlay), sold as bundle or separate.
-- Discord: roles Owner/Maintainer/Beta/Buyer; `#downloads` role-gated; tickets + changelog.
-
-## What "good" looks like (UI reference notes)
-
-- Xeno: compact, dark, title bar integrated, sidebar icon rail, script tabs, bottom console,
-  execute pill, status line (attached / fps / ping), no external window chrome.
-- Solar: rounded panels, deep navy/purple, strong hierarchy, glowing accent, cards for scripts.
-- Our v1: near-black `#0b0c10` canvas, `#111318` panels, `#1a1d24` borders, accent `#7c5cff`
-  (violet) with `#22d3ee` for success, 8 px radii, Inter/Segoe UI, 12-13 px type, subtle shadows.
-- Mod menu: draggable rounded panel, tab rail on the left, toggle switches, sliders, keybind
-  capture, search, collapsible sections, notification toasts, saved config.
+    resistant, obfuscated client check, server-issued. Payment via **Robux** (no bank account),
+    plus manual review fallback. Think of everything: refunds, trials, resale, leaks, chargeback.
+12. **Obfuscate + protect the code**: no plain source in the shipped build; license checks
+    inlined; strings encrypted; anti-debug/anti-dump; unique build hashes.
+13. **Pen-test everything** before calling a build sellable: injection footprint, license
+    bypass attempts, forged tokens, HWID spoof, Discord permission bypass, download link leak,
+    payment flow abuse. Record results.
+14. **Make the Discord server "way better and more professional"** than a default setup:
+    branding, icons/emoji, order, onboarding, role colours, pinned guides, ticket panels,
+    auto-roles, moderation, logs, and a public showcase.
+15. **Two products**: Umbra Executor and Umbra Mod Menu. Sell separately and as a bundle.
+    The mod menu is a test version first but should look production-grade.
 
 ## WORKLOG (last 6)
 One line per work block: what changed, what was measured, what is next.

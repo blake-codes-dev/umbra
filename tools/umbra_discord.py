@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Build the Umbra product server: categories, channels, roles, gates, welcome copy.
+"""Build and maintain the Umbra server: layout, roles, gates, copy.
 
-Idempotent. Uses only the bot token in secrets/discord.token.
-  python tools/umbra_discord.py build
-  python tools/umbra_discord.py seed
+Everything is idempotent and ordered: channels are renamed into the plan, moved
+to a fixed position, re-parented, re-gated, and anything left over from an older
+layout is reported (and removed only with --prune).
+
+  python tools/umbra_discord.py apply            # make the server match the plan
+  python tools/umbra_discord.py doctor           # report drift, change nothing
+  python tools/umbra_discord.py apply --prune    # also delete channels not in the plan
+  python tools/umbra_discord.py seed             # post the copy (skips non-empty channels)
   python tools/umbra_discord.py invite
   python tools/umbra_discord.py post --channel changelog --text "..."
+
+Uses only the bot token in secrets/discord.token.
 """
 from __future__ import annotations
 
@@ -21,27 +28,94 @@ SECRETS = ROOT / "secrets"
 STATE = ROOT / "state" / "discord.json"
 API = "https://discord.com/api/v10"
 GUILD_ID = "1494098236716089434"
+OWNER_ID = "1326301118824841216"
 
-ROLES = [
-    ("Owner", 0x7C5CFF, True),
-    ("Maintainer", 0xC084FC, True),
-    ("Beta", 0x22D3EE, False),
-    ("Buyer", 0xF59E0B, False),
-]
-CATEGORIES = [("INFORMATION", 0x7C5CFF), ("COMMUNITY", 0x22D3EE), ("STAFF", 0x6B7280)]
-CHANNELS = [
-    ("welcome", "INFORMATION", "Start here · rules · access", None),
-    ("announcements", "INFORMATION", "Releases, downtime, transitions", None),
-    ("changelog", "INFORMATION", "Every build: version · hash · fixes · known issues", None),
-    ("downloads", "INFORMATION", "Role-gated builds", "gated"),
-    ("general", "COMMUNITY", "Chat", None),
-    ("support", "COMMUNITY", "Tickets: version + error + steps", None),
-    ("media", "COMMUNITY", "Clips and screenshots", None),
-    ("staff", "STAFF", "Internal: roadmap, keys, incidents", "staff"),
-]
 VIEW = 0x400
 READ_HISTORY = 0x10000
+SEND_MESSAGES = 0x800
+ADD_REACTIONS = 0x40
+ATTACH_FILES = 0x800
+CONNECT = 0x100000
+SPEAK = 0x200000
+USE_EXTERNAL_EMOJI = 0x40000
+MANAGE_MESSAGES = 0x2000
+MENTION_EVERYONE = 0x20000
 
+# lowest -> highest, so position patching is ascending
+ROLES = [
+    ("Muted", 0x6B7280, False),
+    ("Verified", 0x22D3EE, False),
+    ("Beta", 0xA78BFA, False),
+    ("Monthly", 0x34D399, False),
+    ("Lifetime", 0xFBBF24, False),
+    ("Maintainer", 0xC084FC, True),
+    ("Owner", 0x7C5CFF, True),
+]
+RENAMED_ROLES = {"Buyer": "Lifetime"}
+RENAMED_CHANNELS = {"support": "help", "media": "showcase", "verify": "rules",
+                    "downloads": "builds", "vouches": "vouch"}
+# the bot holds position 1, so role ordering clamps to it until the human drags it
+RENAMED_CATEGORIES = {"INFORMATION": "START", "START HERE": "START",
+                      "LIBRARY": "DOWNLOADS"}
+
+# name, topic, special
+CATEGORIES = [
+    ("START", None, "open"),
+    ("STORE", None, "open"),
+    ("DOWNLOADS", None, "library"),
+    ("COMMUNITY", None, "open"),
+    ("STAFF", None, "staff"),
+    ("VOICE", None, "open"),
+]
+CHANNELS = [
+    ("welcome", "what this is and how to start", "readonly"),
+    ("rules", "six lines. react to accept", "readonly"),
+    ("announcements", "releases and downtime", "announce"),
+    ("changelog", "every build and what changed", "readonly"),
+    ("pricing", "three tiers. no key, no ads", "readonly"),
+    ("faq", "read this first", "readonly"),
+    ("vouch", "bought it? post proof", "send"),
+    ("builds", "zips with hashes, role locked", "library-read"),
+    ("scripts", "scripts that actually work", "library-send"),
+    ("showcase", "clips", "library-send"),
+    ("general", "anything", "send"),
+    ("help", "post the template, one thread each", "send"),
+    ("staff", "internal", "staff-send"),
+    ("mod-log", "roles and bans", "staff-read"),
+    ("Voice", "talk", "voice"),
+    ("Support", "screen share a broken build", "voice"),
+]
+READONLY_ROLES = ("Maintainer", "Owner")
+GATED_ROLES = ("Verified", "Beta", "Monthly", "Lifetime", "Maintainer", "Owner")
+
+NL = chr(10)
+
+WELCOME = '**Umbra**\nExecutor and mod menu for Roblox. Small, quiet, no key system, no ads, no watermark.\n\n**Start**\n1. Read #rules and react. You get Verified.\n2. Check #pricing. Free beta seats exist, paid tiers start at $4.\n3. Pay the way #pricing says and #builds unlocks.\n\nStill in development. Beta is free because it breaks. Want stable, wait or pay, both fine.\n\nTest on an alt. Keep your main clean until you trust a build.'
+
+RULES = "**Rules**\n1. One buyer, one person. Don't resell builds.\n2. Don't leak builds or keys outside this server.\n3. Support goes in #help, with the template.\n4. No spam, no DM ads.\n5. Chargeback means the role comes off until it's settled.\n6. Your account, your risk. Use an alt to test.\n\nReact below to get Verified and unlock the rest."
+
+PRICING = '**Pricing**\n**Beta** free. Limited seats, unstable, you report bugs.\n**Monthly** $4/month. Everything, cancel whenever.\n**Lifetime** $10 once. Everything, forever.\n**Founders** $6 once, first 10 people. Lifetime plus a direct line to me.\n\nPaid tiers include the executor, the mod menu, every module after this, and fixes ahead of\nfree users. Robux is fine at the current rate.\n\nTo buy, say which tier in #help. I send payment details and the exact amount. The role goes\non when it clears. Refund inside 48h if it never injected on your machine.'
+
+FAQ = "**FAQ**\n**Is it detected?** Nothing stays undetected forever. #changelog says when a build is pulled.\n**Windows?** 10 21H2+ and 11, x64.\n**Key system?** No. No loader, no ads, no watermark.\n**Main account?** Fine, but test new builds on an alt.\n**Why not a free executor?** Injection adds no module, no thread, no window, no overlay, and\nthe menu isn't a web page in a box.\n**Mobile or Mac?** Not in v1.\n**Script doesn't run?** Check #changelog, then #help with the template.\n**Hashes?** Every build has a SHA-256. If yours differs, it isn't mine."
+
+BUILDS = "Builds go here, one message each, version in the message, SHA-256 under it. Check the hash\nbefore you run anything. SmartScreen warns because nothing is signed, the hash is the source\nof truth.\n\nBeta breaks. A build that survives a day of reports becomes stable and the older one gets\ndeleted. Don't mix files from two builds."
+
+CHANGELOG = "**v0.1.0-dev**\n```\nadded   manual map injection, nothing added to the client (0 modules, 0 threads, 0 windows)\nadded   Luau state discovery from the live interpreter\nadded   mod menu: panel, tabs, toggles, sliders, keybinds, configs\nadded   this server\nknown   executor API not wired to the runner yet, so scripts don't run\n```"
+
+HELP = '**Post this, filled in**\n```\nversion:\nwindows:\ngame or place id:\nwhat I did:\nwhat happened:\nerror text:\nempty script also fails: yes/no\n```\nOne thread per problem. Crash? Attach the newest log from %LOCALAPPDATA%\\Umbra\\logs.\nFirst reply usually inside 12h.'
+
+ANNOUNCE = '**Server is up.**\nUmbra is an executor and mod menu in development. No key system, no ads, nothing public.\n\nFive beta seats are free right now. React in #rules and post in #help with your Windows\nversion. Prices are in #pricing, founders closes at ten.'
+
+TEXTS = {
+    "welcome": WELCOME,
+    "rules": RULES,
+    "pricing": PRICING,
+    "faq": FAQ,
+    "builds": BUILDS,
+    "changelog": CHANGELOG,
+    "help": HELP,
+    "announce": ANNOUNCE,
+}
 
 def tok() -> str:
     return (SECRETS / "discord.token").read_text(encoding="utf-8").strip()
@@ -53,7 +127,7 @@ def api(method: str, path: str, payload: dict | None = None):
         req = urllib.request.Request(API + path, data=data, method=method)
         req.add_header("Authorization", "Bot " + tok())
         req.add_header("Content-Type", "application/json")
-        req.add_header("User-Agent", "UmbraBuilder/1.0")
+        req.add_header("User-Agent", "UmbraBuilder/2.0")
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 body = r.read()
@@ -86,175 +160,309 @@ def save(state: dict) -> None:
     STATE.write_text(json.dumps(state, indent=1), encoding="utf-8")
 
 
-def ensure_role(state, name, colour, hoist):
-    for r in api("GET", f"/guilds/{state['guild_id']}/roles") or []:
-        if r["name"] == name:
-            state["roles"][name] = r["id"]
-            return r["id"]
-    r = api("POST", f"/guilds/{state['guild_id']}/roles",
-            {"name": name, "color": colour, "hoist": hoist, "mentionable": True})
-    state["roles"][name] = r["id"]
-    print("  + role", name)
-    return r["id"]
+def live_roles(state) -> dict:
+    return {r["name"]: r for r in api("GET", f"/guilds/{state['guild_id']}/roles") or []}
 
 
-def ensure_category(state, name):
-    for c in api("GET", f"/guilds/{state['guild_id']}/channels") or []:
-        if c.get("type") == 4 and c["name"] == name:
-            state["categories"][name] = c["id"]
-            return c["id"]
-    c = api("POST", f"/guilds/{state['guild_id']}/channels",
-            {"name": name, "type": 4, "position": len(state["categories"])})
-    state["categories"][name] = c["id"]
-    print("  + category", name)
-    return c["id"]
+def live_channels(state) -> list[dict]:
+    return api("GET", f"/guilds/{state['guild_id']}/channels") or []
 
 
-def ensure_channel(state, name, category, topic):
-    for c in api("GET", f"/guilds/{state['guild_id']}/channels") or []:
-        if c.get("type") == 0 and c["name"] == name:
-            state["channels"][name] = c["id"]
-            return c["id"]
-    c = api("POST", f"/guilds/{state['guild_id']}/channels",
-            {"name": name, "type": 0, "topic": topic,
-             "parent_id": state["categories"][category]})
-    state["channels"][name] = c["id"]
-    print("  + #" + name)
-    return c["id"]
+def ensure_role(state, roles: dict, name: str, colour: int, hoist: bool) -> str:
+    existing = roles.get(name)
+    if existing:
+        rid = existing["id"]
+        if existing["color"] != colour or existing["hoist"] != hoist:
+            api("PATCH", f"/guilds/{state['guild_id']}/roles/{rid}",
+                {"color": colour, "hoist": hoist, "mentionable": True})
+    else:
+        created = api("POST", f"/guilds/{state['guild_id']}/roles",
+                      {"name": name, "color": colour, "hoist": hoist, "mentionable": True})
+        rid = created["id"]
+        roles[name] = created
+    state["roles"][name] = rid
+    return rid
 
 
-def set_overwrites(state, name, allow_roles, deny_everyone):
-    cid = state["channels"][name]
-    overwrites = [{"id": state["guild_id"], "type": 0, "allow": "0",
-                   "deny": str(deny_everyone)}]
-    for role in allow_roles:
-        rid = state["roles"].get(role)
-        if rid:
-            overwrites.append({"id": rid, "type": 0, "allow": str(VIEW | READ_HISTORY),
-                               "deny": "0"})
-    api("PATCH", f"/channels/{cid}", {"permission_overwrites": overwrites})
+def overwrites_for(state, gate: str) -> list[dict] | None:
+    everyone = state["guild_id"]
+    deny_all = {"id": everyone, "type": 0, "allow": "0", "deny": str(VIEW | READ_HISTORY)}
+    allow = lambda role: {"id": state["roles"][role], "type": 0,
+                          "allow": str(VIEW | READ_HISTORY | SEND_MESSAGES | ADD_REACTIONS
+                                       | ATTACH_FILES | USE_EXTERNAL_EMOJI), "deny": "0"}
+    read_only = lambda role: {"id": state["roles"][role], "type": 0,
+                              "allow": str(VIEW | READ_HISTORY | SEND_MESSAGES), "deny": "0"}
+    muted = state["roles"].get("Muted")
+    if gate == "open":
+        return []
+    if gate == "library":
+        return [deny_all] + [allow(r) for r in GATED_ROLES]
+    if gate == "staff":
+        return [deny_all] + [allow(r) for r in READONLY_ROLES]
+    if gate == "library-read":
+        return [deny_all] + [read_only(r) for r in GATED_ROLES]
+    if gate == "library-send":
+        out = [deny_all] + [allow(r) for r in GATED_ROLES]
+        return out
+    if gate == "staff-read":
+        return [deny_all] + [{"id": state["roles"][r], "type": 0,
+                              "allow": str(VIEW | READ_HISTORY), "deny": "0"}
+                             for r in READONLY_ROLES]
+    if gate == "staff-send":
+        return [deny_all] + [allow(r) for r in READONLY_ROLES[:1]]
+    if gate == "readonly":
+        out = [{"id": everyone, "type": 0, "allow": str(VIEW | READ_HISTORY | ADD_REACTIONS),
+                "deny": str(SEND_MESSAGES)}]
+        out += [read_only(r) for r in READONLY_ROLES]
+        return out
+    if gate == "send":
+        out = [{"id": everyone, "type": 0,
+                "allow": str(VIEW | READ_HISTORY | SEND_MESSAGES | ADD_REACTIONS
+                             | ATTACH_FILES | USE_EXTERNAL_EMOJI), "deny": "0"}]
+        if muted:
+            out.append({"id": muted, "type": 0, "allow": str(VIEW | READ_HISTORY),
+                        "deny": str(SEND_MESSAGES)})
+        return out
+    if gate == "voice":
+        out = [{"id": everyone, "type": 0, "allow": str(VIEW | CONNECT | SPEAK),
+                "deny": "0"}]
+        return out
+    if gate == "announce":
+        out = [{"id": everyone, "type": 0, "allow": str(VIEW | READ_HISTORY | ADD_REACTIONS),
+                "deny": str(SEND_MESSAGES)}]
+        out += [read_only(r) for r in READONLY_ROLES]
+        return out
+    return None
 
 
-def cleanup_defaults(state):
-    keep = set(state["channels"].values()) | set(state["categories"].values())
-    for c in api("GET", f"/guilds/{state['guild_id']}/channels") or []:
-        if c["id"] in keep:
-            continue
-        if c.get("type") in (0, 2, 4):
-            api("DELETE", f"/channels/{c['id']}")
-            print("  - removed default", c.get("name"))
+STORED = ("pricing", "buy", "faq", "vouch")
 
 
-WELCOME = (
-    "**UMBRA** — quietly undetected.\n\n"
-    "Umbra is a small, private executor and mod menu for Roblox. No key system, no ads, "
-    "no watermark. Built for people who want their scripts to just run.\n\n"
-    "**Products**\n"
-    "• **Umbra Executor** — inject, `loadstring`, a real script environment, file/HTTP APIs.\n"
-    "• **Umbra Mod Menu** — a polished in-game panel: tabs, toggles, sliders, keybinds, configs.\n\n"
-    "**Get access**\n"
-    "1. Read the rules below.\n"
-    "2. Grab a **Beta** slot in #announcements (first 5 are free).\n"
-    "3. Buyers get the **Buyer** role and the downloads channel forever.\n\n"
-    "**Rules**\n"
-    "1. No leaking builds or keys outside this server.\n"
-    "2. No harassment, slurs, or spam.\n"
-    "3. Support requests go in #support and include: version, game, steps, error text.\n"
-    "4. One account per buyer. Sharing a build is fine; reselling it is not.\n"
-    "5. Exploiting is at your own risk — use an alt for experiments.\n\n"
-    "**Links**\n"
-    "GitHub: <https://github.com/blake-codes-dev/umbra>\n"
-    "Changelog: <#CHANGELOG>"
-)
-SUPPORT = (
-    "**Support template — copy, fill, send.**\n"
-    "```\n"
-    "Umbra version: (Settings -> About, e.g. 0.1.0+3f2a1c)\n"
-    "Windows: (winver)\n"
-    "Game / place id:\n"
-    "What I did:\n"
-    "What happened:\n"
-    "Error text (console):\n"
-    "Fresh empty script also fails? yes/no\n"
-    "```\n"
-    "First response usually < 12 h. If the client crashes, attach the newest file from "
-    "`%LOCALAPPDATA%\\Umbra\\logs`."
-)
-DOWNLOADS = (
-    "**Downloads are role-gated.**\n\n"
-    "• **Beta** — free, limited slots, expect breakage, report everything.\n"
-    "• **Buyer** — paid, stable channel, priority fixes.\n\n"
-    "Builds are posted here as `.zip` attachments with a SHA-256 in the message. "
-    "Verify before running. Windows SmartScreen may warn on unsigned builds; "
-    "the hash is the source of truth."
-)
-ANNOUNCE = (
-    "**Umbra is open.**\n\n"
-    "The executor is in private development; the mod menu is already usable. "
-    "First five **Beta** slots are free — react with 🧪 and open a ticket in #support "
-    "with your Roblox username and Windows build.\n\n"
-    "Paid access: **$6 lifetime Founders** (10 slots), then **$4/mo** or **$10 lifetime**. "
-    "Executor + mod menu are included. Payment link and buyer role are handled in #support."
-)
-CHANGELOG = (
-    "**v0.1.0-dev** · build `dev`\n"
-    "```\n"
-    "added   executor core: manual-map injection, 0 modules/threads added\n"
-    "added   Luau state discovery (ci/global/top offsets from the live interpreter)\n"
-    "added   mod menu: draggable panel, tabs, toggles, sliders, keybinds, config\n"
-    "added   Discord server + role-gated builds\n"
-    "known   executor API not wired to the runner yet; scripts run when the gate lands\n"
-    "```\n"
-    "Every build lists a SHA-256 in #downloads. If a script breaks twice, mark it and "
-    "roll back to the previous build."
-)
+def category_for(name: str, gate: str) -> str:
+    if gate.startswith("library"):
+        return "DOWNLOADS"
+    if gate.startswith("staff"):
+        return "STAFF"
+    if gate == "voice":
+        return "VOICE"
+    if name in STORED:
+        return "STORE"
+    if gate in ("readonly", "announce"):
+        return "START HERE"
+    return "COMMUNITY"
 
 
-def build(_args):
+def plan_channel(state, existing: list[dict], name: str, parent: str, position: int,
+                 topic: str, gate: str, dry: bool) -> str:
+    kind = 2 if gate == "voice" else 0
+    text_types = (0, 5)
+    match = next((c for c in existing if c["name"].lower() == name.lower()
+                  and ((kind == 0 and c["type"] in text_types) or (kind == 2 and c["type"] == 2))),
+                 None)
+    if match:
+        cid = match["id"]
+        patch = {}
+        if match["name"] != name:
+            patch["name"] = name
+        if match.get("parent_id") != parent:
+            patch["parent_id"] = parent
+        if match.get("position") != position:
+            patch["position"] = position
+        if gate != "voice" and (match.get("topic") or "") != (topic or ""):
+            patch["topic"] = topic
+        if match["type"] != kind:
+            patch["type"] = kind
+        over = overwrites_for(state, gate)
+        if over is not None:
+            patch["permission_overwrites"] = over
+        if patch:
+            if not dry:
+                api("PATCH", f"/channels/{cid}", patch)
+            print(f"  ~ {name} " + ",".join(sorted(patch)))
+    else:
+        payload = {"name": name, "parent_id": parent, "position": position, "type": kind}
+        if gate != "voice":
+            payload["topic"] = topic
+        over = overwrites_for(state, gate)
+        if over is not None:
+            payload["permission_overwrites"] = over
+        if dry:
+            print(f"  + {name} (would create)")
+            cid = f"dry-{name}"
+        else:
+            created = api("POST", f"/guilds/{state['guild_id']}/channels", payload)
+            cid = created["id"]
+            print(f"  + {name}")
+            time.sleep(0.15)
+        existing.append({"id": cid, "name": name, "type": payload["type"],
+                         "parent_id": parent, "position": position, "topic": topic})
+    state["channels"][name] = cid
+    return cid
+
+
+def apply(args):
     state = load()
     state["guild_id"] = GUILD_ID
-    state.setdefault("channels", {})
-    state.setdefault("roles", {})
-    state.setdefault("categories", {})
+    for key in ("channels", "roles", "categories"):
+        state.setdefault(key, {})
     g = api("GET", f"/guilds/{GUILD_ID}")
     print("guild:", g.get("name"))
-    if g.get("name") in ("scp funtimes", "Server"):
-        api("PATCH", f"/guilds/{GUILD_ID}",
-            {"name": "Umbra",
-             "description": "Executor + mod menu for Roblox. Quietly undetected."})
-        print("  = renamed guild to Umbra")
+    if g.get("name") != "Umbra":
+        api("PATCH", f"/guilds/{GUILD_ID}", {"name": "Umbra"})
+        print("  = renamed to Umbra")
+    api("PATCH", f"/guilds/{GUILD_ID}",
+        {"description": "Private executor and mod menu for Roblox. No key system, no ads.",
+         "default_message_notifications": 1})
+    roles = live_roles(state)
+    for old, new in RENAMED_ROLES.items():
+        if old in roles and new not in roles and not args.dry:
+            api("PATCH", f"/guilds/{GUILD_ID}/roles/{roles[old]['id']}", {"name": new})
+            print(f"  = role {old} -> {new}")
+            roles = live_roles(state)
+    order = []
     for name, colour, hoist in ROLES:
-        ensure_role(state, name, colour, hoist)
-    for name, _colour in CATEGORIES:
-        ensure_category(state, name)
-    for name, cat, topic, gate in CHANNELS:
-        ensure_channel(state, name, cat, topic)
-        if gate == "gated":
-            set_overwrites(state, name, ["Beta", "Buyer"], VIEW | READ_HISTORY)
-        elif gate == "staff":
-            set_overwrites(state, name, ["Maintainer"], VIEW | READ_HISTORY)
-    save(state)
-    cleanup_defaults(state)
-    save(state)
-    print("done. channels:", len(state["channels"]), "roles:", len(state["roles"]))
+        rid = ensure_role(state, roles, name, colour, hoist)
+        order.append((rid, name))
+    for index, (rid, name) in enumerate(order, start=1):
+        if not args.dry:
+            api("PATCH", f"/guilds/{GUILD_ID}/roles/{rid}", {"position": index})
+    for old, new in RENAMED_CATEGORIES.items():
+        match = next((c for c in live_channels(state)
+                      if c["type"] == 4 and c["name"].lower() == old.lower()), None)
+        if match and not any(c["type"] == 4 and c["name"].lower() == new.lower()
+                             for c in live_channels(state)):
+            if not args.dry:
+                api("PATCH", f"/channels/{match['id']}", {"name": new})
+            print(f"  = category {old} -> {new}")
+    for index, (name, _topic, _gate) in enumerate(CATEGORIES):
+        cat = next((c for c in live_channels(state)
+                    if c["type"] == 4 and c["name"].lower() == name.lower()), None)
+        over = overwrites_for(state, _gate) if _gate else None
+        if cat:
+            patch = {}
+            if cat["position"] != index:
+                patch["position"] = index
+            if over is not None and cat.get("permission_overwrites") != over:
+                patch["permission_overwrites"] = over
+            if patch and not args.dry:
+                api("PATCH", f"/channels/{cat['id']}", patch)
+            cid = cat["id"]
+            print(f"  = {name}" + (f" ({','.join(sorted(patch))})" if patch else ""))
+        else:
+            payload = {"name": name, "type": 4, "position": index}
+            if over is not None:
+                payload["permission_overwrites"] = over
+            if args.dry:
+                print(f"  + {name} (category, would create)")
+                cid = f"dry-cat-{name}"
+            else:
+                cid = api("POST", f"/guilds/{GUILD_ID}/channels", payload)["id"]
+                print(f"  + {name} (category)")
+            time.sleep(0.15)
+        state["categories"][name] = cid
+        time.sleep(0.15)
+    existing = live_channels(state)
+    for old, new in RENAMED_CHANNELS.items():
+        match = next((c for c in existing if c["name"].lower() == old), None)
+        if match and not any(c["name"].lower() == new for c in existing):
+            if not args.dry:
+                api("PATCH", f"/channels/{match['id']}", {"name": new})
+            match["name"] = new
+            print(f"  = channel {old} -> {new}")
+    for index, (name, topic, gate) in enumerate(CHANNELS):
+        parent = state["categories"][category_for(name, gate)]
+        plan_channel(state, existing, name, parent, index, topic, gate, args.dry)
+    planned = {n.lower() for n, _t, _g in CHANNELS} | {n.lower() for n, _t, _g in CATEGORIES}
+    leftovers = [c for c in existing if c["name"].lower() not in planned
+                 and c["type"] in (0, 2, 4)]
+    for c in leftovers:
+        if args.prune and not args.dry:
+            api("DELETE", f"/channels/{c['id']}")
+            print(f"  - {c['name']}")
+        else:
+            print(f"  ? leftover {c['name']} ({'pruned' if args.prune else 'todo'})")
+    # the bot still looks these up by their old keys
+    for alias, target in (("support", "help"), ("verify", "rules"), ("downloads", "builds"),
+                          ("vouches", "vouch")):
+        if state["channels"].get(target):
+            state["channels"][alias] = state["channels"][target]
+    if not args.dry:
+        keep = {n for n, _t, _g in CHANNELS} | {"support", "verify", "downloads", "vouches"}
+        state["channels"] = {k: v for k, v in state["channels"].items() if k in keep}
+        state["categories"] = {k: v for k, v in state["categories"].items()
+                               if k in {c for c, _t, _g in CATEGORIES}}
+        api("PUT", f"/guilds/{GUILD_ID}/members/{OWNER_ID}/roles/{state['roles']['Owner']}", {})
+        save(state)
+    print("done:", len(state["channels"]), "channels,", len(state["roles"]), "roles")
 
 
-def seed(_args):
+def doctor(_args):
     state = load()
-    posts = {
-        "welcome": WELCOME.replace("<#CHANGELOG>", state["channels"].get("changelog", "")),
-        "support": SUPPORT,
-        "downloads": DOWNLOADS,
-        "announcements": ANNOUNCE,
-        "changelog": CHANGELOG,
-    }
-    for name, text in posts.items():
+    problems = 0
+    roles = live_roles(state)
+    for name, colour, hoist in ROLES:
+        current = roles.get(name)
+        if not current:
+            print(f"  missing role {name}")
+            problems += 1
+        elif current["color"] != colour or current["hoist"] != hoist:
+            print(f"  role {name} drifted (colour/hoist)")
+            problems += 1
+    chans = {c["name"].lower(): c for c in live_channels(state)}
+    for name, topic, gate in CHANNELS:
+        current = chans.get(name.lower())
+        if not current:
+            print(f"  missing channel {name}")
+            problems += 1
+            continue
+        if gate != "voice" and (current.get("topic") or "") != (topic or ""):
+            print(f"  topic drifted: {name}")
+            problems += 1
+        want_deny = gate.startswith(("library", "staff"))
+        blocked = any(o["id"] == state["guild_id"] and int(o["deny"]) & VIEW
+                      for o in current.get("permission_overwrites") or [])
+        if want_deny and not blocked:
+            print(f"  gate open at @everyone: {name}")
+            problems += 1
+    print(f"{problems} problem(s)")
+
+
+def clear_channel(cid: str) -> int:
+    removed = 0
+    while True:
+        msgs = api("GET", f"/channels/{cid}/messages?limit=100") or []
+        if not msgs:
+            return removed
+        ids = [m["id"] for m in msgs]
+        if len(ids) == 1:
+            api("DELETE", f"/channels/{cid}/messages/{ids[0]}")
+        else:
+            api("POST", f"/channels/{cid}/messages/bulk-delete", {"messages": ids})
+        removed += len(ids)
+        time.sleep(0.4)
+
+
+def seed(args):
+    state = load()
+    for name, text in TEXTS.items():
         cid = state["channels"].get(name)
         if not cid:
             continue
-        api("POST", f"/channels/{cid}/messages", {"content": text[:1900]})
+        existing = api("GET", f"/channels/{cid}/messages?limit=1") or []
+        if existing and args.clear:
+            print("  cleared", clear_channel(cid), "message(s) in", name)
+        elif existing and not args.force:
+            print("  = has content, skipping", name)
+            continue
+        api("POST", f"/channels/{cid}/messages",
+            {"content": text.replace("<#CHANGELOG>", state["channels"].get("changelog", ""))[:1950]})
         print("  posted", name)
-        time.sleep(0.4)
+        time.sleep(0.5)
+    rules = state["channels"].get("rules")
+    if rules:
+        api("PUT", f"/channels/{rules}/messages/{api('GET', f'/channels/{rules}/messages?limit=1')[0]['id']}"
+                    "/reactions/%E2%9C%85/@me", {})
+        print("  reacted to the rules message")
 
 
 def invite(_args):
@@ -274,14 +482,20 @@ def post(args):
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("build")
-    sub.add_parser("seed")
+    p = sub.add_parser("apply")
+    p.add_argument("--dry", action="store_true")
+    p.add_argument("--prune", action="store_true")
+    sub.add_parser("doctor")
+    p = sub.add_parser("seed")
+    p.add_argument("--force", action="store_true")
+    p.add_argument("--clear", action="store_true")
     sub.add_parser("invite")
     p = sub.add_parser("post")
     p.add_argument("--channel", required=True)
     p.add_argument("--text", required=True)
     args = ap.parse_args()
-    {"build": build, "seed": seed, "invite": invite, "post": post}[args.cmd](args)
+    {"apply": apply, "doctor": doctor, "seed": seed, "invite": invite,
+     "post": post}[args.cmd](args)
     return 0
 
 

@@ -47,3 +47,22 @@ Last updated 2026-11-24 (from messages in thread a6433c58).
   (violet) with `#22d3ee` for success, 8 px radii, Inter/Segoe UI, 12-13 px type, subtle shadows.
 - Mod menu: draggable rounded panel, tab rail on the left, toggle switches, sliders, keybind
   capture, search, collapsible sections, notification toasts, saved config.
+
+## Added 2026-11-24 (second batch)
+
+10. **Discord must be professional and complete**: verification gate, rules acceptance, ticket
+    system with buttons, purchase flow, announcements/changelog, role assignment (human gets
+    Owner), staff channel, bot commands. No dead channels.
+11. **Sell it properly**: build a **key/license system** — signed tokens, HWID-bound, tamper
+    resistant, obfuscated client check, server-issued. Payment via **Robux** (no bank account),
+    plus manual review fallback. Think of everything: refunds, trials, resale, leaks, chargeback.
+12. **Obfuscate + protect the code**: no plain source in the shipped build; license checks
+    inlined; strings encrypted; anti-debug/anti-dump; unique build hashes.
+13. **Pen-test everything** before calling a build sellable: injection footprint, license
+    bypass attempts, forged tokens, HWID spoof, Discord permission bypass, download link leak,
+    payment flow abuse. Record results.
+14. **Make the Discord server "way better and more professional"** than a default setup:
+    branding, icons/emoji, order, onboarding, role colours, pinned guides, ticket panels,
+    auto-roles, moderation, logs, and a public showcase.
+15. **Two products**: Umbra Executor and Umbra Mod Menu. Sell separately and as a bundle.
+    The mod menu is a test version first but should look production-grade.

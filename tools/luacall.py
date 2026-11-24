@@ -81,6 +81,19 @@ def verify(handle: int, state: int, heap) -> dict:
             "argc": (top - base) // 16, "tag": tag}
 
 
+def write_bytes(pid: int, address: int, data: bytes) -> bool:
+    handle, _ = manualmap.open_process(pid)
+    written = ctypes.c_size_t()
+    old = ctypes.c_ulong()
+    page = address & ~0xFFF
+    manualmap.k32.VirtualProtectEx(handle, ctypes.c_void_p(page), 0x1000, 0x04, ctypes.byref(old))
+    ok = manualmap.k32.WriteProcessMemory(handle, ctypes.c_void_p(address), data, len(data),
+                                          ctypes.byref(written))
+    manualmap.k32.VirtualProtectEx(handle, ctypes.c_void_p(page), 0x1000, old.value,
+                                   ctypes.byref(old))
+    return bool(ok)
+
+
 def read_qword(pid: int, address: int):
     handle, _ = manualmap.open_process(pid)
     buf = ctypes.create_string_buffer(8)
@@ -124,6 +137,8 @@ def main() -> int:
     ap.add_argument("--pid", type=int, default=0)
     ap.add_argument("--seconds", type=float, default=25.0)
     ap.add_argument("--dump", action="store_true")
+    ap.add_argument("--push-number", type=float, default=None,
+                    help="push this number on the stack before the call")
     args = ap.parse_args()
     pid = args.pid or manualmap.find_pid()
     if not pid:
@@ -159,6 +174,10 @@ def main() -> int:
         print("no thread entered client code")
         return 4
     before_top = read_qword(pid, state + 0x80)
+    if args.push_number is not None and before_top:
+        write_bytes(pid, before_top, struct.pack("<d", args.push_number) + b"\0\0\0\0"
+                    + struct.pack("<I", 3) + b"\0\0\0\0")
+        write_bytes(pid, state + 0x80, struct.pack("<Q", before_top + 0x10))
     result = manualmap._hijack(manualmap.open_process(pid)[0], tid, pid, entry, state)
     if "error" in result:
         print("hijack:", result["error"])
@@ -170,7 +189,10 @@ def main() -> int:
     manualmap.k32.CloseHandle(thread)
     time.sleep(2.0)
     after_top = read_qword(pid, state + 0x80)
-    print(f"called on tid {tid} · top {before_top:#x} -> {after_top:#x}")
+    if args.push_number is not None and before_top and after_top:
+        write_bytes(pid, state + 0x80, struct.pack("<Q", before_top))
+    show = lambda v: "unreadable" if v is None else f"{v:#x}"
+    print(f"called on tid {tid} : top {show(before_top)} -> {show(after_top)}")
 
     time.sleep(1.2)
     alive = bool(manualmap.find_pid())

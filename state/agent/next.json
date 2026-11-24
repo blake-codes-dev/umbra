@@ -1,15 +1,16 @@
 {
- "next": "M1: install/locate a native toolchain, build the 20 KB stub DLL, manual map from host",
- "done": [
-  "M0 seed: 2 unique sigs",
-  "multi-dump merge works (518 pages)",
-  "vault snapshot+backup",
-  "queue+rules"
+ "next": [
+  "before anything else: find why a hijack call now kills the client - bisect thread choice vs found state vs luaB_print; keep the client on the home screen (no place) as the controlled case",
+  "M2 close: call luaB_print with one string argument so the log line is distinctive, then confirm the exact 'UMBRA' line in AppData/Local/Roblox/logs",
+  "add a thunk variant that stores rax into the bus so calls can return values (proves execution without the log)",
+  "make the state finder wait for a thread executing client .text (pick_thread) and retry on OpenProcess denial",
+  "then M3: keep the found lua_State in the stub, push a Luau runner closure, and drive the Heartbeat queue",
+  "re-baseline footprint_audit for the injected state; unmap stale images on re-inject"
  ],
- "blocked": [
-  "BIOS AC-restore off -> power loss leaves the machine off",
-  "no auto-login (Microsoft account password unknown)",
-  "no elevated token: HKLM hardening pending"
- ],
- "updated": "2026-11-24T08:31:57"
+ "quirks": [
+  "GDK activation (shell:AppsFolder\\...!Game) currently dies ~12 s after start; roblox:// starts the legacy client instead",
+  "legacy client logs to AppData/Local/Roblox/logs, GDK to AppData/Local/RobloxPCGDK/logs - luacall.py now reads the legacy dir",
+  "Hyperion denies PROCESS_ALL_ACCESS in bursts; retry, do not conclude the client is gone",
+  "hard-killing the client leaves a stale mutex: the next instance sits in waitForNewPlayerProcess and exits"
+ ]
 }

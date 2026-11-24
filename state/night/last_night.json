@@ -1,14 +1,14 @@
 {
- "generated": "2026-11-24T12:01:11",
+ "generated": "2026-11-24T12:56:16",
  "observer": {
   "seconds": 60.0,
-  "sweeps": 51,
-  "median_gap": 1.06,
-  "regions_flipped": 897,
+  "sweeps": 48,
+  "median_gap": 1.08,
+  "regions_flipped": 3966,
   "decoy_hits": 0,
-  "cpu_ms": 30687.5
+  "cpu_ms": 124671.9
  },
  "decoy": null,
- "jobs": 7,
- "failures": 2
+ "jobs": 9,
+ "failures": 3
 }

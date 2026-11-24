@@ -1,17 +1,17 @@
 {
- "at": "2026-11-24T12:49:18",
+ "at": "2026-11-24T13:19:48",
  "checks": {
   "mode": {
    "online": true
   },
   "disk": {
-   "free_gb": 37.4
+   "free_gb": 34.1
   },
   "heartbeats": {
-   "night_runner": 10.9,
-   "intel": 1025.4,
-   "qwen": 832.6,
-   "agent": 39.3
+   "night_runner": 0.4,
+   "intel": 1055.9,
+   "qwen": 863.1,
+   "agent": 69.8
   },
   "vault": {
    "added": 0,

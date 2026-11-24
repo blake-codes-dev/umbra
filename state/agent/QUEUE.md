@@ -4,36 +4,28 @@ Take the top unchecked item. Finish it or record the blocker. Tick it. Next.
 Do not end a turn just because a sub-task finished; end interim messages with
 <!-- deepai:work-remains --> on its own line.
 
-## M0 — patterns (in progress)
-- [x] dump exe (.text 100.2 MB) and dll (.byfron 14.7 MB) from process memory
-- [x] string xrefs: 2 unique sigs (luaG_index_error, luaG_runerror)
-- [x] anchors: 5 unique sigs (near-descriptor matching); 4 unresolved
-- [x] re-dump x17 and merge: .text zeros 75% -> 55%, 20,756 pages recovered (dump/merged-all.bin)
-- [x] 10 unique sigs, each verified to hit exactly once on an independent snapshot
-- [x] luau_execute located (3 dispatch sites: 0x797395, 0x410b0cd, 0x58bc29d)
-- [ ] luaG_arith sig misses on sparse snapshots: re-derive from a page always present
+## Now
+- [ ] Discord: Owner role to human, Verified gate, ticket panel, purchase panel, rules, logs
+- [ ] Discord bot process: verification button, ticket open/close, /key, /buy, /status
+- [ ] Key system: Ed25519 signed licenses, HWID binding, trials, revocation list
+- [ ] Payment: Robux gamepass page + manual verification + receipts in #downloads
+- [ ] Mod menu v1 (Luau, standalone, polished): tabs/toggles/sliders/keybinds/config/notify
+- [ ] Executor UI v1 (WPF): editor, tabs, console, attach/execute, settings, license dialog
+- [ ] Landing page + README screenshots + GitHub Pages
+- [ ] Pentest checklist and results
+- [ ] Native core: luau_load + pcall call path (live tests paused during account switch)
 
 ## M1 — injector
-- [x] stub DLL built (3,584 B) + manual map validated on a throwaway process (marker file)
+- [x] stub DLL built + manual map validated
 - [x] host: manualmap.py (relocations, imports, entry via hijack)
-- [x] stub->host channel: file bus (pagefile sections went copy-on-write)
-- [ ] gate: footprint_audit --diff clean (needs a proper baseline for the same state)
-- [x] live injection survives: 30 s+, no new module, no new thread
-- [ ] sigfix 8 broken sigs against the live module, then sigcheck again
-- [x] attach mode (M1-RESULT.md: 0 modules, 0 threads, +2 RX pages, client survives)
-- [ ] launch-suspended mode
+- [x] live injection survives 30 s+, no new module/thread
 - [ ] unmap stale images on re-injection (8 KB leak per run)
 
 ## M2 — lua_State
-- [ ] anchor chain to lua_State, one native->Luau print, survive rejoin
+- [x] offsets measured: ci=0x58, global obj=0x68, top=0x80, CallInfo 0x30, TString data=0x18
+- [ ] resolve globals table from lua_State (LuaTable at L+??), find loadstring closure
+- [ ] find luau_load from luaB_loadstring disassembly
+- [ ] one native->Luau print
 
 ## M3 — runner
-- [ ] task.spawn queue on Heartbeat, loadstring, output capture, 30-assert self-test
-
-## Product
-- [ ] Discord (needs bot token), README, changelog, screenshots, beta invites
-
-## Ops
-- [~] local_brain: tools/brain.py client done (swap qwen<->inkling, idle stop pending); action sandbox pending
-- [x] Inkling load test: llama.cpp b12600, 8.8 tok/s, 391 correct, 60-140 s load
-- [ ] harden auto-run when elevated
+- [ ] native command queue + runner chunk + print capture

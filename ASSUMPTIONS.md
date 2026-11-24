@@ -65,3 +65,21 @@ Open questions to close before M2:
 | `.text` pages need a protection lift to read | measured | plain ReadProcessMemory returns partial reads; pe_dump._read_region succeeds |
 | 3 of 11 static signatures resolve in the live module | measured | sigcheck: exact RVA hits for luaG_arith, luaG_index_error, luaG_index_error_msg |
 | Dump-merged signatures can carry zero holes | measured | 8 signatures missed live although static-unique |
+
+## lua_State layout (measured 2026-11-24, from the client's own code)
+
+| field | offset | evidence |
+|---|---|---|
+| top | +0x80 | `0x2576d30 mov rdi,[rcx+0x80]` in luaD_precall |
+| base | +0x78 | `0x58c2a5b sub rsi,[rcx+0x78]`, then `/16` = argc in luaB_print |
+| func slot | +0x70 | mirrored from `ci->func`; always `base - 0x10` |
+| ci | +0x58 | `0x2576d79 mov r15,[rcx+0x58]` |
+| ci_base | +0x20 | `0x2576d7d sub r15,[rcx+0x20]` (the pair is the ci count) |
+| nci / size_ci | +0x30 / +0x32 | `movzx ebp,[rcx+0x30]`, `movzx r14d,[rcx+0x32]` |
+| CallInfo.func / .base | +0x8 / +0x10 | `mov rax,[rax+0x10]` → stored to L+0x78 |
+| luaD_precall | 0x2576d20 | frame setup, stack growth, C-call convention |
+| luaB_print | 0x58c2a40 | argc from top-base, tolstring + write |
+
+A resting state is `ci == ci_base`, `nci == 0`, `base == top`, `func == base - 0x10`.
+Calling with zero Lua args is safe (first live native→Luau call, client survived);
+pushing an argument by hand (write a TValue at top, bump top) still crashes - open item.

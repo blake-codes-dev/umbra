@@ -86,24 +86,15 @@
         <Setter Property="CornerRadius" Value="12" />
         <Setter Property="Padding" Value="18" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <!-- hover lifts with a shadow rather than a colour animation: a style setter shares one
+             brush between every card, and animating it fights across instances -->
         <Style.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-                <Trigger.EnterActions>
-                    <BeginStoryboard>
-                        <Storyboard>
-                            <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
-                                            To="#33334A" Duration="0:0:0.16" />
-                        </Storyboard>
-                    </BeginStoryboard>
-                </Trigger.EnterActions>
-                <Trigger.ExitActions>
-                    <BeginStoryboard>
-                        <Storyboard>
-                            <ColorAnimation Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
-                                            To="{StaticResource Line}" Duration="0:0:0.16" />
-                        </Storyboard>
-                    </BeginStoryboard>
-                </Trigger.ExitActions>
+                <Setter Property="Effect">
+                    <Setter.Value>
+                        <DropShadowEffect BlurRadius="22" ShadowDepth="3" Opacity="0.35" Color="#000000" />
+                    </Setter.Value>
+                </Setter>
             </Trigger>
         </Style.Triggers>
     </Style>

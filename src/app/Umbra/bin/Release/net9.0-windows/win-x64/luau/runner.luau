@@ -13,6 +13,9 @@ local rawLoad = BRIDGE.loadstring or loadstring
 -- is the one that starts this chunk
 local API
 do
+    if type(BRIDGE.loadstring) ~= "function" then
+        error("umbra: the core has no compiler (loadstring bridge missing)")
+    end
     local chunk, loadError = BRIDGE.loadstring(BRIDGE.apiSource)
     if not chunk then error("umbra: api did not compile: " .. tostring(loadError)) end
     API = chunk(BRIDGE)

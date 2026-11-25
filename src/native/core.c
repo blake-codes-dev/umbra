@@ -1204,6 +1204,39 @@ static void *find_gettop(unsigned char *base)
     return 0;
 }
 
+/* Every lua_push* ends by advancing the stack pointer: add qword [rcx+0x80], 0x10, then ret.
+   That is common to all of them, so they are told apart by what they store first. */
+static void *find_push(int kind)
+{
+    unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
+    size_t i, span = 8u << 20;
+    unsigned char *start;
+    if (!base) return 0;
+    start = base + 0x1000;
+    for (i = 0; i + 40 < span; i++) {
+        unsigned char code[40];
+        int found = -1, j;
+        if (!safe_read(start + i, code, sizeof(code))) return 0;
+        for (j = 0; j < 30; j++)
+            if (code[j] == 0x48 && code[j + 1] == 0x83 && code[j + 2] == 0x41 &&
+                code[j + 3] == 0x80 && code[j + 4] == 0x10) { found = j; break; }
+        if (found < 0) continue;
+        /* a push ends right after the advance */
+        if (code[found + 5] != 0xC3 && !(code[found + 5] >= 0xC0 && code[found + 5] <= 0xCF)) continue;
+        if (kind == 1) {                       /* boolean: a byte store from dl/edx */
+            for (j = 1; j < found; j++)
+                if (code[j] == 0x88 && (code[j + 1] & 0xC7) == 0x01) return start + i;
+        } else if (kind == 2) {                /* number: an SSE store */
+            for (j = 1; j < found; j++)
+                if (code[j] == 0xF2 && code[j + 1] == 0x0F && code[j + 2] == 0x11) return start + i;
+        } else {                               /* string/table: an internal call */
+            for (j = 2; j < found; j++)
+                if (code[j] == 0xE8) return start + i;
+        }
+    }
+    return 0;
+}
+
 static void report_pick(const char *label, void *at)
 {
     char line[96];
@@ -1248,6 +1281,12 @@ static int calibrate(unsigned char *base)
     if (!g.gettop && (g.gettop = (lua_gettop_t)find_gettop(base)) != 0)
         report_pick("gettop", (void *)g.gettop);
     if (g.compile) report_pick("compile", (void *)g.compile);
+    if (!g.pushboolean && (g.pushboolean = (lua_pushboolean_t)find_push(1)) != 0)
+        report_pick("pushbool", (void *)g.pushboolean);
+    if (!g.pushnumber && (g.pushnumber = (lua_pushnumber_t)find_push(2)) != 0)
+        report_pick("pushnum", (void *)g.pushnumber);
+    if (!g.pushls && (g.pushls = (lua_pushlstring_t)find_push(3)) != 0)
+        report_pick("pushstr", (void *)g.pushls);
     return g.load && g.pcall && g.pcall != (lua_pcall_t)g.load;
 }
 

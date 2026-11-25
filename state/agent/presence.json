@@ -1,18 +1,18 @@
 {
  "container": {
-  "at": 1795594639.1110945,
-  "iso": "2026-11-25T08:17:19Z",
-  "note": "suite green again (25 checks), calibration isolated",
+  "at": 1795595203.2036219,
+  "iso": "2026-11-25T08:26:43Z",
+  "note": "calibration crash fixed (previous_call on null)",
   "state": "working",
   "alerted": false,
-  "beats": 6
+  "beats": 7
  },
  "windows": {
   "at": 1795593968.4112167,
   "iso": "2026-11-25T08:06:08Z",
   "note": "\"paging model measured, state scan hardened\"",
   "state": "working",
-  "alerted": false,
+  "alerted": true,
   "beats": 5
  }
 }

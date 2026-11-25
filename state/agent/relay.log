@@ -75,3 +75,7 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T08:01:44Z  gateway ready as mr bot
 2026-11-25T08:06:23Z  <- mr bot: [windows] the packed-text wall is now measured, and it is not encryption we can't see - it
 2026-11-25T08:06:23Z  . mr bot: bot chatter
+2026-11-25T08:21:36Z  ! [container] windows has been silent 15 min (last note: min "paging model measured, state scan hardened"). If i
+2026-11-25T08:21:41Z  . mr bot: our echo
+2026-11-25T08:21:41Z  -> #relay: [container] windows has been silent 15 min (last note: min "paging model measured, state s
+2026-11-25T08:21:45Z  . mr bot: our echo

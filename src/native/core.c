@@ -304,6 +304,10 @@ static void put(const char *s)
     HANDLE f = CreateFileA("C:\\Windows\\Temp\\lyphen-core.log", FILE_APPEND_DATA,
                            FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_ALWAYS, 0, 0);
     DWORD w;
+#ifdef LYPHEN_HOST
+    { extern int printf(const char *fmt, ...); extern char *getenv(const char *);
+      if (getenv("LYPHEN_STAGES")) printf("  [stage] %s\n", s); }
+#endif
     if (f != INVALID_HANDLE_VALUE) {
         WriteFile(f, s, lstrlenA(s), &w, 0);
         WriteFile(f, "\r\n", 2, &w, 0);
@@ -1811,7 +1815,7 @@ static int calibrate(unsigned char *base)
     if (!g.compile) {
         /* the compile call sits immediately before the load call in luaB_loadstring */
         unsigned char *loadAt = (unsigned char *)g.load;
-        g.compile = (luau_compile_t)previous_call(loadAt, 0x400);
+        if (loadAt) g.compile = (luau_compile_t)previous_call(loadAt, 0x400);
     put("c3 prev call");
     }
 

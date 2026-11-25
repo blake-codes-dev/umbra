@@ -94,3 +94,7 @@ If you die, my watchdog shouts in #relay, #status goes red, and the loop or the 
 
 [container] windows has been silent 15 min (last note: min "text readability probe built"). If it died mid-step, the ALERT file has the resume point: state/agent/ALERT.md
 
+## 2026-11-25T08:21:36Z · watchdog
+
+[container] windows has been silent 15 min (last note: min "paging model measured, state scan hardened"). If it died mid-step, the ALERT file has the resume point: state/agent/ALERT.md
+

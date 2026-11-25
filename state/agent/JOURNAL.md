@@ -14,3 +14,4 @@
 2026-11-24 13:12 · regression: with the current client every hijacked call now kills the process (2/2, zero-arg luaB_print) - isolate thread choice (pick_thread plants on a hot render thread) vs state choice vs luaB_print itself; earlier the same call survived on a different instance
 2026-11-24 23:10 · discord tickets+panels fixed live, menu library shipped, two UIs with motion and a real spoofer, account location researched and built · next: windows restart of the bot, publish+obfuscate
 2026-11-24 23:40 · v0.1.0-dev built and obfuscated here, released with a hash, status + tos written · next: bot restart on windows, live location verify
+2026-11-25 00:40 · executor runner+api+native core written and documented, wine found 2 real theme bugs · next: user runs build, then native bridges

@@ -1,0 +1,47 @@
+# API status
+
+Honest table. `luau` means implemented in `src/luau/api.luau` and working off bridges;
+`bridge` means the Luau side is done and it needs the matching native call; `todo` means
+nothing yet.
+
+Nothing here is ticked until it ran in a live client.
+
+## Tier 1
+
+| API | Where | Status |
+|---|---|---|
+| `getgenv`, `getrenv`, `shared` | runner | luau, per-run env |
+| `print` / `warn` capture | runner | luau, goes to the bus and the gui console |
+| `loadstring`, `load` | runner env | luau, compiles against the script env |
+| `identifyexecutor` | api | luau |
+| `getthreadidentity` / `setthreadidentity` | api | luau (reports 8; the field write is still todo) |
+| `checkcaller` | api | luau |
+| `islclosure`, `clonefunction` | api | luau |
+| `getupvalue`, `setupvalue` | api | luau (`debug.*`) |
+| `getrawmetatable`, `setreadonly` | api | luau |
+| `hookfunction` | api | luau, guides upvalues onto the target |
+| `hookmetamethod` | api | luau |
+| `newcclosure` | api | luau wrapper, not a real C closure yet |
+| `getconnections`, `firesignal` | api | bridge, needs the signal walk |
+| `firetouchinterest` | api | luau best effort |
+| `writefile`, `readfile`, `appendfile`, `isfile`, `isfolder`, `makefolder`, `delfile`, `listfiles` | api | bridge, `__umbraFile` |
+| `request`, `httpget`, `HttpPost` | api | bridge, `__umbraHttp` (WinHTTP) |
+| `setclipboard`, `mousemoverel`, `keypress`, `keyrelease` | api | bridge, `__umbraInput` |
+| `setfpscap` | api | luau no-op until the flag is found |
+| `isrbxactive` | api | bridge |
+| `queue_on_teleport` | api | luau stub, stored only |
+| `getcustomasset` | api | needs the localhost asset server |
+
+## Tier 2 (not in v1)
+
+`getscriptclosure`, `getconstants`/`setconstants`, `getgc`, `getinstances`, `getnilinstances`,
+`getscriptbytecode`, `decompile` (explicit stub), `setfflag`, `gethui`.
+
+## Rules
+
+- A missing bridge must `error` with the bridge name, never silently return `nil`.
+- Anything that parses user input is the caller's risk: `request` returns body, status and
+  headers, and never throws on an HTTP error code.
+- Files are sandboxed to `%LOCALAPPDATA%\Umbra\workspace`; `..` cannot escape it.
+- Hooks are reversible: `hookfunction` returns the original, and a hook that throws is
+  reported with the script id so it can be undone.

@@ -1,13 +1,12 @@
 {
  "next": [
-  "Windows side, in order: restart the bot so the ticket/panel fixes are live (start > run > python tools/umbra_bot.py), then delete the old panels and run python tools/panels.py --clear",
-  "dotnet publish per docs/build.md, then obfuscar with obfuscar.xml, then hash and post to #builds",
-  "live-verify account location with the alt signed in: read the country, change it, confirm the read-back, then confirm whether the GDK client writes it back on relaunch",
-  "M2 natives: push one TString argument without crashing (top/base writes), then luau_load",
-  "menu: measure whether the tween reads as smooth at 30 fps in a real game, cut the toast delay if it stacks"
+  "ask the user to run v0.1.1: if the window is blank, the animation templates in Theme.xaml are the cause and they come out",
+  "native: signal walk for getconnections, then the file/http/input bridges the api expects",
+  "state find: push the found state through luacall once more, one TString argument, watch for the crash that returned earlier",
+  "menu: shrink the toast delay if the user reports stacking, and measure fps cost of the ESP loop"
  ],
  "blocked": [
-  "compiling the WPF app and any live client test: this container has no dotnet and no Windows interop"
+  "live client work needs the desktop; this container has no Roblox and no interop"
  ],
- "updated": "2026-11-24T23:10:00"
+ "updated": "2026-11-25T00:40:00"
 }

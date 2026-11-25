@@ -1,4 +1,4 @@
-/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/Umbra.pdb
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/Lyphen.pdb
 /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/antiafk.luau
 /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/copypos.luau
 /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/fpsunlock.luau
@@ -16,4 +16,4 @@
 /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/library/menu.luau
 /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/luau/runner.luau
 /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/luau/api.luau
-/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/Umbra.exe
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/dist/publish/Lyphen.exe

@@ -147,6 +147,22 @@
    "sig": "40 53 48 83 EC 30 48 8B 51 58 48 8B D9 48 8B 81 80 00 00 00 48 83 C0 10 0F 29 74 24 20 0F 28 F1",
    "hits": 2,
    "note": "xmm1 double, tag 3 store, ret 1 - deduped copy"
+  },
+  {
+   "name": "luaB_loadstring",
+   "string_va": null,
+   "func_va": "0x41dc080",
+   "sig": null,
+   "hits": 1,
+   "note": "live: global 'loadstring' node in the game env table, key text verified, closure+0x28"
+  },
+  {
+   "name": "lua_pushvfstring",
+   "string_va": null,
+   "func_va": "0x2584420",
+   "sig": null,
+   "hits": 1,
+   "note": "(L, fmt, va) - moves r8 to rbx, rdx to rdi, rcx to rsi then formats; pushing with it needs no lua_pushlstring"
   }
  ],
  "client_version": "2.748.1526.0"

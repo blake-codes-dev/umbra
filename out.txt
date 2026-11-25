@@ -1,0 +1,10 @@
+  client text@1000 49-89-C0-48-8B-4C-24-20-48-8B-54-24-28-48-C7-04 text@30000 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00
+  start region base 1ed64f34000 size d000 state 1000 protect 40
+  k32 local 7ffce1b80000 remote 7ffce1b80000
+  entry rva 47b4 at 1ed64f347b4 read True/16 bytes 48-81-EC-E8-00-00-00-C7-44-24-30-00-00-00-00-E8 want 48-81-EC-E8-00-00-00-C7-44-24-30-00-00-00-00-E8
+  .text protect 20
+  .rdata protect 4
+  .data protect 4
+  .pdata protect 4
+  .reloc protect 4
+  apc 83 pinned 3

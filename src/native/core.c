@@ -106,6 +106,8 @@ typedef int (*lua_pcall_t)(lua_State *, int, int, int);
 typedef void *(*lua_pushcclosure_t)(lua_State *, void *, const char *, int, void *);
 typedef const char *(*lua_tolstring_t)(lua_State *, int, size_t *);
 typedef void (*lua_pushlstring_t)(lua_State *, const char *, size_t);
+typedef int (*luaB_loadstring_t)(lua_State *);
+typedef void (*lua_pushvfstring_t)(lua_State *, const char *, void *);
 typedef void (*lua_createtable_t)(lua_State *, int, int);
 typedef void (*lua_setfield_t)(lua_State *, int, const char *);
 typedef void (*lua_pushnumber_t)(lua_State *, double);
@@ -128,6 +130,8 @@ typedef struct {
     lua_pcall_t pcall;
     lua_pushcclosure_t pushcclosure;
     lua_pushlstring_t pushls;
+    luaB_loadstring_t loadstr;
+    lua_pushvfstring_t pushvf;
     lua_tolstring_t tolstring;
     lua_createtable_t createtable;
     lua_setfield_t setfield;
@@ -150,6 +154,11 @@ static int resolve(void);
 static int calibrate(unsigned char *base);
 static unsigned char *next_scan(unsigned char *base, size_t span, unsigned char *from,
                                unsigned char **end);
+/* inside a region: on by a page, or out to the region end when it is the last page */
+static unsigned char *step_page(unsigned char *page, unsigned char *end)
+{
+    return page + 0x1000 < end ? page + 0x1000 : end;
+}
 static int open_pipe(void);
 static char g_stage[32] = "start";
 
@@ -492,12 +501,36 @@ static lua_State *state_from_scriptcontext(void)
     return 0;
 }
 
+/* a real interned string without lua_pushlstring. luaO_pushvfstring formats "%s" out of a va_list
+   we build by hand: Win64 varargs live in the caller's shadow space for pointers, and the first
+   vararg slot is the first thing the formatter reads, so one slot is the whole argument list. */
+static void push_string(lua_State *state, const char *text)
+{
+    struct {
+        void *general[8];
+        unsigned __int64 floatregs[16];
+        void *overflow;
+    } list;
+    memset(&list, 0, sizeof(list));
+    list.general[0] = (void *)text;
+    g.pushvf(state, "%s", &list);
+}
+
 /* source -> bytecode -> closure. Returns the same codes as luau_load so callers stay simple. */
 static int load_source(lua_State *state, const char *chunkname, const char *source)
 {
     size_t size = 0;
     char *bytecode;
     int status;
+    if (!g.load && g.loadstr && g.pushvf) {
+        /* no luau_load measured: drive the base library's own loadstring, which reads the source
+           and the optional chunkname off the stack and leaves closure or nil+message */
+        push_string(state, source);
+        if (chunkname) push_string(state, chunkname);
+        status = g.loadstr(state);
+        return status == 1 ? 0 : 1;
+    }
+    if (!g.load) return 1;
     if (!g.compile) {
         /* luau_load without a compiler: it re-parses source when the buffer is not bytecode,
            which is what costs a bytecode cache in production and nothing today */
@@ -519,7 +552,7 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
        The runner compiles api.luau through the bridge, so nothing has to be passed as a
        second call argument: an api table pushed before the runner would sit below it and
        pcall would try to call the table (which is exactly what the harness caught). */
-    if (!state || !g.load || !g.pcall) {
+    if (!state || !g.pcall || (!g.load && !(g.loadstr && g.pushvf))) {
         fail("resume", "no state or no luau entry");
         return;
     }
@@ -915,7 +948,8 @@ static int cb_loadstring(lua_State *state)
     char *bytecode;
     size_t length = 0;
     const char *text = g.tolstring ? g.tolstring(state, 1, &length) : 0;
-    if (!text || !g.compile || !g.load) return failarg(state, "loadstring unavailable"), 2;
+    if (!text || !g.compile || (!g.load && !(g.loadstr && g.pushvf)))
+        return failarg(state, "loadstring unavailable"), 2;
     source = (char *)VirtualAlloc(0, length + 1, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!source) return failarg(state, "no memory"), 2;
     for (size_t i = 0; i < length; i++) source[i] = text[i];
@@ -1382,16 +1416,19 @@ static int resolve(void)
     RESOLVE(tolstring, lua_tolstring_t, LUA_TOLSTRING, "lua_tolstring");
     RESOLVE(tonumber, lua_tonumber_t, LUA_TONUMBER, "lua_tonumber");
     RESOLVE(gettop, lua_gettop_t, LUA_GETTOP, "lua_gettop");
+    RESOLVE(loadstr, luaB_loadstring_t, LUAB_LOADSTRING, "luaB_loadstring");
+    RESOLVE(pushvf, lua_pushvfstring_t, LUA_PUSHVFSTRING, "lua_pushvfstring");
 
     /* nothing measured yet (the shipped text is packed, so these are normally all zero):
        calibrate in memory and keep whatever worked */
-    if (!g.load || !g.pcall) {
+    if ((!g.load && !(g.loadstr && g.pushvf)) || !g.pcall) {
         put("r5 calibrate");
         if (!calibrate(base)) emit("e", 0, "calibration failed, the executor stays dumb");
         put("r6 calibrated");
         g.compile = 0;   /* discovered lazily below */
     }
-    ok = g.load && g.pcall && g.pushcclosure && g.createtable && g.setfield && g.rawseti;
+    ok = (g.load || (g.loadstr && g.pushvf)) && g.pcall &&
+         g.pushcclosure && g.createtable && g.setfield && g.rawseti;
     return ok;
 }
 
@@ -1525,13 +1562,26 @@ static void *find_reference(void *needle, size_t limit)
     (void)limit;
     if (!base) return 0;
     span = code_span(base);
+#ifdef LYPHEN_HOST
+    { extern int printf(const char *fmt, ...); printf("  [dbg] find_reference span=%llx needle=%p\n",
+        (unsigned long long)span, needle); }
+#endif
     if (!span) return 0;
     page = 0;
     while ((page = next_scan(base, span, page, &end)) != 0) {
         size_t len = (size_t)(end - page);
         size_t k;
         if (len > 0x1000) len = 0x1000;
-        if (!safe_read(page, buffer, len)) { page = end; continue; }
+        if (!safe_read(page, buffer, len)) { page = step_page(page, end);
+#ifdef LYPHEN_HOST
+            { extern int printf(const char *fmt, ...); extern char *getenv(const char *);
+              if (getenv("LYPHEN_DEEP2")) printf("  [dbg] unreadable page %p len %llx\n", (void *)page, (unsigned long long)len); }
+#endif
+            continue; }
+#ifdef LYPHEN_HOST
+        { extern int printf(const char *fmt, ...); extern char *getenv(const char *);
+          if (getenv("LYPHEN_DEEP2")) printf("  [dbg] page %p len %llx\n", (void *)page, (unsigned long long)len); }
+#endif
         for (k = 0; k + 8 <= len; k++, seen++) {
             unsigned char *head = buffer + k;
             long displacement;
@@ -1543,14 +1593,30 @@ static void *find_reference(void *needle, size_t limit)
             if ((head[2] & 0xC7) != 0x05) continue;              /* [rip + disp32] */
             displacement = *(long *)&head[3];
             target = page + k + 7 + displacement;
-            if (target == (unsigned char *)needle) return page + k;
+#ifdef LYPHEN_HOST
+            { extern int printf(const char *fmt, ...); extern char *getenv(const char *);
+              static int shown; if (getenv("LYPHEN_DEEP") && shown < 6000)
+                  printf("  [dbg] ref-cand at %p -> %p (want %p)\n", (void *)(page + k),
+                         (void *)target, needle), shown++; }
+#endif
+            if (target == (unsigned char *)needle) {
+#ifdef LYPHEN_HOST
+                { extern int printf(const char *fmt, ...);
+                  printf("  [dbg] ref MATCH at %p for %p\n", (void *)(page + k), needle); }
+#endif
+                return page + k;
+            }
             if (head[1] == 0x8B) {
                 void *slot = 0;
                 if (safe_read(target, &slot, sizeof(slot)) && slot == needle) return page + k;
             }
         }
-        page = end;
+        page = step_page(page, end);
     }
+#ifdef LYPHEN_HOST
+    { extern int printf(const char *fmt, ...); extern char *getenv(const char *);
+      if (getenv("LYPHEN_DEEP")) printf("  [dbg] ref none for %p\n", needle); }
+#endif
     return 0;
 }
 
@@ -1601,14 +1667,21 @@ static void *anchor_calls(unsigned char *base, const char *name, size_t nameLeng
     if (!base) return 0;
     hit = find_name(base, name, nameLength, 0);
 #ifdef LYPHEN_HOST
-    { printf("  [dbg] anchor %s base=%p hit=%p\n", name, (void *)base, (void *)hit); }
+    { extern int printf(const char *fmt, ...); printf("  [dbg] find_name %s -> %p\n", name, (void *)hit); }
 #endif
     while (hit && !chosen) {
         void *ref = find_reference(hit, 192u << 20);
+        int found = 0;
         if (ref) {
             void *calls[24];
-            int found = gather_calls((unsigned char *)ref, 320, calls, 24);
             int i;
+            found = gather_calls((unsigned char *)ref, 320, calls, 24);
+#ifdef LYPHEN_HOST
+            { extern int printf(const char *fmt, ...); extern char *getenv(const char *);
+              if (getenv("LYPHEN_STAGES"))
+                  printf("  [dbg] anchor %s hit=%p ref=%p calls=%d pickLast=%d\n", name,
+                         (void *)hit, (void *)ref, found, pickLast); }
+#endif
             for (i = 0; i < found; i++) {
                 int at = pickLast ? found - 1 - i : i;
                 if (writes_top(calls[at])) { chosen = calls[at]; break; }
@@ -1652,10 +1725,13 @@ static unsigned char *next_scan(unsigned char *base, size_t span, unsigned char 
         *end = (unsigned char *)region.BaseAddress + region.RegionSize;
         if (*end > limit) *end = limit;
         from = (unsigned char *)region.BaseAddress;
+        if (*end <= from) *end = from + 0x1000;      /* never hand back a zero-length region */
+        if (*end > limit) *end = limit;
         if (region.State == MEM_COMMIT && (region.Protect & 0xFF) != PAGE_NOACCESS && *end - from >= 64 &&
             safe_read(from, probe, 4) && (probe[0] | probe[1] | probe[2] | probe[3]))
             return from;
         from = *end;
+        if (from <= base) from = base + 0x1000;      /* belt and braces against no progress */
     }
     return 0;
 }
@@ -1679,7 +1755,7 @@ static void *find_gettop(unsigned char *base)
             if (c[11] != 0x04 || c[12] != 0xC3) continue;
             return at;
         }
-        page = end;
+        page = step_page(page, end);
     }
     return 0;
 }
@@ -2102,16 +2178,16 @@ static int g_hooked;
 static char *g_apiSource;
 static char *g_runnerSource;
 
-static void install_now(void);
+static void install_now(void *hint);
 
 /* called instead of the hooked function; its return goes through the replay stub */
-static void hook_thunk(void)
+static void hook_thunk(void *first)
 {
 #ifdef LYPHEN_HOST
     if (!g_quietThunk) printf("  [dbg] thunk\n");
 #endif
     g_installed_via_thunk = 1;
-    if (!g_installed) install_now();
+    if (!g_installed) install_now(first);
 }
 
 /* Length of one instruction, enough for the prologues these wrappers start with. Returns 0 on
@@ -2346,10 +2422,31 @@ patch_target:
 }
 
 /* installed on the VM thread: load the runner, then the hook is no longer needed */
-static void install_now(void)
+/* The trigger's first argument *is* the state: tolstring, pcall and gettop all take L in rcx, so
+   a hook on one of them hands it over and the blind heap crawl is only a fallback. */
+static int plausible_state(lua_State *state)
+{
+    unsigned char head[0x90];
+    unsigned long long ci, base, top, global;
+    if (!state || ((ULONG_PTR)state & 7)) return 0;
+    if (!safe_read(state, head, sizeof(head))) return 0;
+    ci = *(unsigned long long *)(head + L_CI);
+    base = *(unsigned long long *)(head + L_BASE);
+    top = *(unsigned long long *)(head + L_TOP);
+    global = *(unsigned long long *)(head + L_GLOBAL);
+    if (global < 0x10000 || ci < 0x10000 || base < 0x10000) return 0;
+    if (top < base || top - base > 0x800000) return 0;
+    return 1;
+}
+
+static void install_now(void *hint)
 {
     lua_State *state;
     g_installed = 1;
+    if (hint && plausible_state((lua_State *)hint)) {
+        put("state from hook arg");
+        g.state = (lua_State *)hint;
+    }
     state = g.state ? g.state : state_from_scriptcontext();
     if (!state) {
         g_installed = 0;
@@ -2357,6 +2454,16 @@ static void install_now(void)
     }
     g.state = state;
     emit("i", 0, "on the vm thread, installing runner");
+    /* proof of life that needs no table api: compile a chunk through the base library's own
+       loadstring, run it, and log whatever comes back. The bridge needs lua_createtable and
+       friends, so this is the only path that survives when only the pinned four resolve. */
+    if (state && g.pcall && g.loadstr && g.pushvf) {
+        static const char smoke[] = "print(\"[lyphen] hello from luau\")";
+        if (load_source(state, "@Lyphen/smoke", smoke) == 0 && g.pcall(state, 0, 0, 0) == 0)
+            put("smoke ran clean");
+        else
+            fail("resume", g.tolstring ? g.tolstring(state, -1, 0) : "smoke failed");
+    }
     spawn_runner(state, g_apiSource, g_runnerSource);
 }
 
@@ -2471,24 +2578,24 @@ static DWORD run_entry(void)
 
     put("m7 resolved");
     stage("state");
-    put("dbg state");
-    g.state = state_from_scriptcontext();
-    put("dbg state done");
-    if (!g.state) {
-        fail("state", "lua_State not found yet");
-    } else {
+    /* The hook supplies the state, so the heap crawl is skipped here: it is the one step that
+       reliably kills the client, and nothing needs its answer until the fallback path. */
+    {
         g_apiSource = read_chunk("api.luau");
         g_runnerSource = read_chunk("runner.luau");
         if (!g_runnerSource) fail("compile", "runner.luau missing from %LOCALAPPDATA%\\Lyphen");
         /* gettop is the trigger of choice: it is called constantly, it never throws, and it has no
            frame of its own, so replaying its prologue cannot disturb error handling. The trampoline
            page carries no unwind info, so a throwing function is the wrong place to stand in. */
-        else if (put("m8 runner read"), g.gettop && install_hook((void *)g.gettop))
+        else if (put("m8 runner read"),
+                 (g.tolstring && install_hook((void *)g.tolstring)) ||
+                 (g.pcall && install_hook((void *)g.pcall)) ||
+                 (g.gettop && install_hook((void *)g.gettop)))
             emit("i", 0, "waiting for the vm thread");
         else {
             /* no hook possible: fall back to installing from here, which is the racy path */
             emit("w", 0, "no hook, installing from the injected thread");
-            install_now();
+            install_now(0);
         }
     }
 

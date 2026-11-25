@@ -79,3 +79,9 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T08:21:41Z  . mr bot: our echo
 2026-11-25T08:21:41Z  -> #relay: [container] windows has been silent 15 min (last note: min "paging model measured, state s
 2026-11-25T08:21:45Z  . mr bot: our echo
+2026-11-25T08:27:00Z  -> #relay: calibration no longer takes the client down. root cause: calibrate() called previous_call(
+2026-11-25T08:27:03Z  . mr bot: our echo
+2026-11-25T08:27:03Z  . mr bot: our echo
+2026-11-25T08:36:50Z  gateway ready as mr bot
+2026-11-25T08:38:30Z  . mr bot: our echo
+2026-11-25T08:38:31Z  -> #relay: BIG one: the anchor scan was only ever looking at the FIRST PAGE of each memory region. ne

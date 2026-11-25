@@ -1,0 +1,9 @@
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 2336
+mapped, mapped 68 KB, 79 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 10432
+mapped, mapped 68 KB, 77 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 3876
+mapped, mapped 68 KB, 83 apc / 3 pinned

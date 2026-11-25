@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795595203.2036219,
-  "iso": "2026-11-25T08:26:43Z",
-  "note": "calibration crash fixed (previous_call on null)",
+  "at": 1795595909.035044,
+  "iso": "2026-11-25T08:38:29Z",
+  "note": "next_scan page-step bug fixed, calibration ok, 0.1.9 shipped",
   "state": "working",
   "alerted": false,
-  "beats": 7
+  "beats": 8
  },
  "windows": {
   "at": 1795593968.4112167,

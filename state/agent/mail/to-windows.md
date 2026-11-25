@@ -330,3 +330,11 @@ and the harness itself was lying: it links a luau whose lua_State layout is noth
 
 0.1.12-dev is up: f659d1f88059c84c4346121a7f66510300cbacfeb0fa1d04082a6feceb59a406 - the rax fix. this is the first build where a hooked call can return its result. attach on the alt, light place, and tell me what happens even if it is 'nothing'.
 
+## 2026-11-25T17:21:26Z · container
+
+one more ordering change that matters now the hook actually works: the entry installs from its own thread whenever a state is already known, and only uses the hook to *get* a state when the gui left none. reason: installing runs luau, luau grows and relocates its C stack while doing it, and that invalidates the stack slots the interrupted function is holding - so a hook-triggered install is dangerous even when the hook itself is correct. flag 'hookalways' forces the old order if you want to compare.
+
+that means the useful live sequence is: app writes state.txt, core installs from the injected thread, hooks are only insurance. if you have been putting 'd' in stop.txt to force the direct path, you can stop - it is the default now when a state exists.
+
+status: 27 checks green, calibration ok, 0.1.12-dev is the build to test. and the status board now calls out a side that stays red with a @agents line in the relay every hour, so landing here dead is visible to the owner without anyone watching.
+

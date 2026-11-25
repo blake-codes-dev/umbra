@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795626976.2636292,
-  "iso": "2026-11-25T17:16:16Z",
-  "note": "27 ok, regression test for the rax bug, calibration ok",
+  "at": 1795627270.407147,
+  "iso": "2026-11-25T17:21:10Z",
+  "note": "entry prefers our own thread for install; hooks now just carry state",
   "state": "working",
   "alerted": false,
-  "beats": 23
+  "beats": 24
  },
  "windows": {
   "at": 1795614841.399289,

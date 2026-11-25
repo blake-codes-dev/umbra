@@ -215,3 +215,5 @@ websockets.exceptions.ConnectionClosedError: no close frame received or sent
 2026-11-25T17:04:58Z  . mr bot: our echo
 2026-11-25T17:12:17Z  gateway ready as mr bot
 2026-11-25T17:17:00Z  . mr bot: bot chatter
+2026-11-25T17:21:28Z  -> #relay: one more ordering change that matters now the hook actually works: the entry installs from
+2026-11-25T17:21:32Z  . mr bot: our echo

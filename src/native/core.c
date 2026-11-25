@@ -3176,6 +3176,15 @@ static void install_now(void *hint)
 static int g_guardReady;
 static DWORD run_entry(void);
 
+/* 0 = install from this thread, 1 = wait for a hook. Kept separate so the choice is testable
+   without standing up the whole entry. */
+static int install_route(void)
+{
+    if (g_stopAt < 0 || flag("nohook")) return 0;
+    if (g.state && !flag("hookalways")) return 0;
+    return 1;
+}
+
 /* A manual map is not a module, so the loader never sees our .pdata and every __try in the payload
    would be dead weight: an access violation anywhere would kill the client instead of landing in
    the handler. Registering our own unwind table is what makes the SEH real. */
@@ -3323,7 +3332,7 @@ static DWORD run_entry(void)
            invalidates the stack slots the interrupted function is holding. Doing it from our own
            thread touches nothing else. The hook is kept as the way to *get* a state when the gui
            did not leave one, because installing blind is the racy path. */
-        else if (g_stopAt < 0 || flag("nohook") || (g.state && !flag("hookalways"))) {
+        else if (!install_route()) {
             if (flag("nohook")) emit("i", 0, "nohook flag: installing without touching text");
             else put("direct install");
             install_now(0);

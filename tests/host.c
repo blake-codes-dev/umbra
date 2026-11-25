@@ -834,6 +834,17 @@ int main(int argc, char **argv)
         FlushInstructionCache(GetCurrentProcess(), (void *)fake_identity, 16);
     }
 
+    /* Where the install comes from. With a state in hand the entry must install from its own
+       thread: installing inside a hook is what relocates the stack under the interrupted caller. */
+    {
+        extern int install_route(void);
+        g.state = L;
+        CHECK(install_route() == 0, "a known state installs from our own thread, not from a hook");
+        g.state = 0;
+        CHECK(install_route() == 1, "with no state it waits for a hook instead");
+        g.state = L;
+    }
+
     /* the hook machinery, proved on a leaf function whose result is observable */
     {
         unsigned char keepTop[16];

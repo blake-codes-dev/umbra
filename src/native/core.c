@@ -1285,6 +1285,32 @@ static void *find_createtable(void)
     return 0;
 }
 
+/* Accessors that take an index work on `L->top - 0x10` (the -1 slot) and convert in place.
+   tonumber also reports through its third argument, a store into [r8] - that is the only
+   reliable difference between the two, so it decides which is which. */
+static void *find_indexed(int wantNumber)
+{
+    unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
+    size_t i, span = 8u << 20;
+    static const unsigned char pickLast[] = { 0x48, 0x8B, 0x41, 0x80, 0x48, 0x83, 0xE8, 0x10 };
+    if (!base) return 0;
+    for (i = 0x1000; i + 80 < span; i++) {
+        unsigned char code[80];
+        int j, call = 0, writesOut = 0;
+        if (!safe_read(base + i, code, sizeof(code))) return 0;
+        if (memcmp(code, pickLast, sizeof(pickLast))) continue;
+        for (j = 8; j < 72; j++) {
+            if (code[j] == 0xE8) call = 1;
+            if (code[j] == 0x41 && (code[j + 1] == 0x88 || code[j + 1] == 0xC6 ||
+                                    code[j + 1] == 0xC7 || code[j + 1] == 0xB0))
+                writesOut = 1;
+        }
+        if (!call) continue;
+        if (writesOut == wantNumber) return base + i;
+    }
+    return 0;
+}
+
 static void report_pick(const char *label, void *at)
 {
     char line[96];
@@ -1341,6 +1367,10 @@ static int calibrate(unsigned char *base)
         report_pick("rawseti", (void *)g.rawseti);
     if (!g.createtable && (g.createtable = (lua_createtable_t)find_createtable()) != 0)
         report_pick("newtable", (void *)g.createtable);
+    if (!g.tonumber && (g.tonumber = (lua_tonumber_t)find_indexed(1)) != 0)
+        report_pick("tonumber", (void *)g.tonumber);
+    if (!g.tolstring && (g.tolstring = (lua_tolstring_t)find_indexed(0)) != 0)
+        report_pick("tolstring", (void *)g.tolstring);
     return g.load && g.pcall && g.pcall != (lua_pcall_t)g.load;
 }
 

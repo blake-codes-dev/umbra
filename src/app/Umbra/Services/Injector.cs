@@ -29,6 +29,11 @@ public sealed class Injector
     private const uint PageReadWrite = 0x04;
     private const uint PageExecuteRead = 0x20;
     private const uint MemRelease = 0x8000;
+    private const uint MemPrivate = 0x20000;
+
+    /// <summary>Written into the payload's header padding so a re-inject can find and free it.</summary>
+    private static readonly byte[] Marker = { (byte)'U', (byte)'M', (byte)'B', (byte)'R', (byte)'A', (byte)'1' };
+    private const int MarkerOffset = 0x100;
 
     [DllImport("kernel32", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
@@ -38,6 +43,24 @@ public sealed class Injector
 
     [DllImport("kernel32", SetLastError = true)]
     private static extern IntPtr VirtualAllocEx(IntPtr process, IntPtr at, UIntPtr size, uint type, uint protect);
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern IntPtr VirtualQueryEx(IntPtr process, IntPtr at, out Region region, UIntPtr size);
+
+    [DllImport("kernel32")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Region
+    {
+        public IntPtr Base;
+        public IntPtr AllocationBase;
+        public uint AllocationProtect;
+        public IntPtr RegionSize;
+        public uint State;
+        public uint Protect;
+        public uint Type;
+    }
 
     [DllImport("kernel32", SetLastError = true)]
     private static extern bool VirtualFreeEx(IntPtr process, IntPtr at, UIntPtr size, uint type);
@@ -99,6 +122,10 @@ public sealed class Injector
             if (pe is null) return new(false, "payload is not a PE", pid);
             if (pe.Machine != 0x8664) return new(false, "payload is not x64", pid);
 
+            // a previous session in the same client would otherwise leak its whole image
+            var stale = FindPrevious(process);
+            if (stale != IntPtr.Zero) FreePrevious(process, stale);
+
             var remote = VirtualAllocEx(process, IntPtr.Zero, (UIntPtr)pe.SizeOfImage,
                 MemCommitReserve, PageReadWrite);
             if (remote == IntPtr.Zero) return new(false, "allocation failed", pid);
@@ -108,6 +135,7 @@ public sealed class Injector
                 // headers first: the image has to be structurally valid before anything runs
                 var headers = new byte[pe.SizeOfHeaders];
                 Array.Copy(image, headers, (int)Math.Min(pe.SizeOfHeaders, image.Length));
+                Array.Copy(Marker, 0, headers, MarkerOffset, Marker.Length);
                 if (!Write(process, remote, headers))
                     return new(false, "header write failed", pid);
 
@@ -158,6 +186,38 @@ public sealed class Injector
     }
 
     private static char[] _unused = Array.Empty<char>();
+
+    /// <summary>Finds an image from an earlier inject by its marker.</summary>
+    private static IntPtr FindPrevious(IntPtr process)
+    {
+        var cursor = (IntPtr)0x10000;
+        var info = new Region();
+        var size = (UIntPtr)Marshal.SizeOf<Region>();
+        while (VirtualQueryEx(process, cursor, out info, size) != IntPtr.Zero)
+        {
+            var next = info.Base + (int)info.RegionSize;
+            if (next <= cursor) break;
+            cursor = next;
+
+            if (info.State != 0x1000 || info.Type != MemPrivate) continue;
+            if (info.Protect != PageExecuteReadWrite && info.Protect != PageReadWrite) continue;
+            if ((long)info.RegionSize < 0x200) continue;
+
+            var probe = new byte[MarkerOffset + Marker.Length];
+            if (!ReadProcessMemory(process, info.Base, probe, (UIntPtr)probe.Length, out _)) continue;
+            var match = true;
+            for (var i = 0; i < Marker.Length; i++)
+                if (probe[MarkerOffset + i] != Marker[i]) { match = false; break; }
+            if (match) return info.Base;
+        }
+        return IntPtr.Zero;
+    }
+
+    /// <summary>Best effort: a leaked image is worse than a failed free, so failures are silent.</summary>
+    private static void FreePrevious(IntPtr process, IntPtr at)
+    {
+        VirtualFreeEx(process, at, UIntPtr.Zero, MemRelease);
+    }
 
     private static bool Write(IntPtr process, IntPtr at, byte[] data) =>
         WriteProcessMemory(process, at, data, (UIntPtr)data.Length, out var written) &&

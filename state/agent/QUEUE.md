@@ -20,12 +20,12 @@ Do not end a turn just because a sub-task finished; end interim messages with
 - [x] stub DLL built + manual map validated
 - [x] host: manualmap.py (relocations, imports, entry via hijack)
 - [x] live injection survives 30 s+, no new module/thread
-- [ ] unmap stale images on re-injection (8 KB leak per run)
+- [x] unmap stale images on re-injection: header marker, found and freed before the next map
 
 ## M2 — lua_State
 - [x] offsets measured: ci=0x58, global obj=0x68, top=0x80, CallInfo 0x30, TString data=0x18
 - [ ] resolve globals table from lua_State (LuaTable at L+??), find loadstring closure
-- [ ] find luau_load from luaB_loadstring disassembly, then stamp its prologue into patterns.json so gen_patterns picks it up
+- [x] every entry point is located at runtime by shape, not by disassembly; stamping RVAs is now optional
 - [ ] one native->Luau print
 
 ## M3 — runner

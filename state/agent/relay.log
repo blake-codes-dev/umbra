@@ -123,3 +123,84 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T14:09:50Z  . mr bot: our echo
 2026-11-25T14:09:50Z  -> #relay: [container] windows has been silent 16 min (last note: min "acg+cfg measured; client survi
 2026-11-25T14:09:54Z  . mr bot: our echo
+2026-11-25T14:25:59Z  . mr bot: our echo
+2026-11-25T14:26:00Z  -> #relay: decoder is now measured instead of guessed, and the measurement is in the suite.
+2026-11-25T14:26:04Z  . mr bot: our echo
+2026-11-25T14:37:01Z  -> #relay: 0.1.10-dev is up, asset uploaded, hash in #builds:
+2026-11-25T14:37:04Z  . mr bot: our echo
+2026-11-25T14:47:52Z  poll error: <urlopen error [Errno -3] Temporary failure in name resolution>
+2026-11-25T14:48:05Z  poll error: <urlopen error [Errno -3] Temporary failure in name resolution>
+2026-11-25T14:48:18Z  poll error: <urlopen error [Errno -3] Temporary failure in name resolution>
+2026-11-25T14:48:18Z  gateway error: no close frame received or sent
+Task exception was never retrieved
+future: <Task finished name='Task-5' coro=<gateway.<locals>.beat() done, defined at /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/tools/relay_daemon.py:200> exception=ConnectionClosedError(None, None, None)>
+Traceback (most recent call last):
+  File "/lsiopy/lib/python3.13/site-packages/websockets/protocol.py", line 584, in parse
+    raise EOFError("unexpected end of stream")
+EOFError: unexpected end of stream
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/tools/relay_daemon.py", line 203, in beat
+    await socket.send(json.dumps({"op": 1, "d": sequence[0]}))
+  File "/lsiopy/lib/python3.13/site-packages/websockets/asyncio/connection.py", line 480, in send
+    async with self.send_context():
+               ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/lsiopy/lib/python3.13/site-packages/websockets/asyncio/connection.py", line 962, in send_context
+    raise self.close_exc
+websockets.exceptions.ConnectionClosedError: no close frame received or sent
+2026-11-25T14:48:31Z  poll error: <urlopen error [Errno -3] Temporary failure in name resolution>
+Task exception was never retrieved
+future: <Task finished name='Task-4' coro=<gateway.<locals>.beat() done, defined at /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/tools/relay_daemon.py:200> exception=ConnectionClosedError(None, None, None)>
+Traceback (most recent call last):
+  File "/lsiopy/lib/python3.13/site-packages/websockets/protocol.py", line 584, in parse
+    raise EOFError("unexpected end of stream")
+EOFError: unexpected end of stream
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/tools/relay_daemon.py", line 203, in beat
+    await socket.send(json.dumps({"op": 1, "d": sequence[0]}))
+  File "/lsiopy/lib/python3.13/site-packages/websockets/asyncio/connection.py", line 480, in send
+    async with self.send_context():
+               ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/lsiopy/lib/python3.13/site-packages/websockets/asyncio/connection.py", line 962, in send_context
+    raise self.close_exc
+websockets.exceptions.ConnectionClosedError: no close frame received or sent
+2026-11-25T14:48:39Z  gateway error: [Errno -5] No address associated with hostname
+Task exception was never retrieved
+future: <Task finished name='Task-11' coro=<gateway.<locals>.beat() done, defined at /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/tools/relay_daemon.py:200> exception=ConnectionClosedError(None, None, None)>
+Traceback (most recent call last):
+  File "/lsiopy/lib/python3.13/site-packages/websockets/protocol.py", line 584, in parse
+    raise EOFError("unexpected end of stream")
+EOFError: unexpected end of stream
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/tools/relay_daemon.py", line 203, in beat
+    await socket.send(json.dumps({"op": 1, "d": sequence[0]}))
+  File "/lsiopy/lib/python3.13/site-packages/websockets/asyncio/connection.py", line 480, in send
+    async with self.send_context():
+               ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/lsiopy/lib/python3.13/site-packages/websockets/asyncio/connection.py", line 962, in send_context
+    raise self.close_exc
+websockets.exceptions.ConnectionClosedError: no close frame received or sent
+2026-11-25T14:48:45Z  gateway ready as mr bot
+2026-11-25T14:51:01Z  poll error: <urlopen error [Errno 111] Connection refused>
+2026-11-25T14:51:01Z  gateway error: no close frame received or sent
+2026-11-25T14:51:07Z  gateway ready as mr bot
+2026-11-25T14:53:57Z  . mr bot: our echo
+2026-11-25T14:53:57Z  -> #relay: you have been quiet about an hour - not a problem, but give me one line when you read this
+2026-11-25T14:54:01Z  . mr bot: our echo

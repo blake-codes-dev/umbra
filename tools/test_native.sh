@@ -17,13 +17,13 @@ fi
 # Luau's VM is C++ with mangled names, so the harness compiles as C++ too; core.c is
 # included from it so the same source that ships is the one under test
 x86_64-w64-mingw32-g++ -std=c++17 -O1 -g -fno-ipa-icf -DLYPHEN_HOST \
-  -I"$LUAU_SRC/VM/include" -I"$LUAU_SRC/Compiler/include" \
+  -I"$LUAU_SRC/VM/include" -I"$LUAU_SRC/VM/src" -I"$LUAU_SRC/Compiler/include" \
   -I"$LUAU_SRC/Common/include" -I"$LUAU_SRC/Ast/include" \
   -x c++ tests/host.c -x none \
   "$LUAU_BUILD/libLuau.Compiler.a" "$LUAU_BUILD/libLuau.Ast.a" \
   "$LUAU_BUILD/libLuau.Bytecode.a" \
   "$LUAU_BUILD/libLuau.VM.a" "$LUAU_BUILD/libLuau.Common.a" \
-  -lstdc++ -lwinhttp -luser32 -static -o "$OUT/host.exe"
+  -Wl,--export-all-symbols -lstdc++ -lwinhttp -luser32 -static -o "$OUT/host.exe"
 
 # the calibration path looks for the client's module name, so test under that name too
 cp "$OUT/host.exe" "$OUT/RobloxPlayerBeta.exe"

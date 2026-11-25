@@ -79,14 +79,45 @@ ATTR_NOINLINE static int fake_call_api(void *state, int nargs)      /* repeated,
 #pragma optimize("", on)
 #endif
 
-/* luaB_pcall: the body is a call to lua_pcall, nothing else */
-int fake_luaB_pcall(void *state)
+/* exported under plain names because core.c resolves host entry points by name */
+extern "C" __declspec(dllexport) char *luau_compile_hl(const char *src, size_t size, void *opts,
+                                                       size_t *out)
 {
-    fake_call_api(state, 1);
-    return 0;
+    return luau_compile(src, size, (lua_CompileOptions *)opts, out);
 }
 
-int fake_luaB_loadstring(void *state)
+extern "C" __declspec(dllexport) int luau_load_hl(void *L, const char *name, const char *data,
+                                                  size_t size, int env)
+{
+    return luau_load((lua_State *)L, name, data, size, env);
+}
+
+extern "C" __declspec(dllexport) int lua_checkstack_hl(void *L, int n)
+{
+    return lua_checkstack((lua_State *)L, n);
+}
+
+extern "C" __declspec(dllexport) int lua_pcall_hl(void *L, int nargs, int nres, int err)
+{
+    return lua_pcall((lua_State *)L, nargs, nres, err);
+}
+
+/* luaB_pcall: the body is a call to lua_pcall, nothing else */
+/* A fake that only counted arguments proved nothing, because the core uses this as its pcall and
+   no luau code ever ran through it. A real pcall works unchanged: the core parks the callee at
+   base-0x10 and counts arguments as `top - callee - 1`, which is exactly where lua_pcall looks
+   for the function, so the argument count is just the slot distance above base. */
+extern "C" __declspec(dllexport) int fake_luaB_pcall(void *state)
+{
+    lua_State *L = (lua_State *)state;
+    int nargs = lua_gettop(L);
+    int r = lua_pcall(L, nargs, LUA_MULTRET, 0);
+    if (r) fprintf(stderr, "  [dbg] pcall nargs=%d base-top=%d stacksize=%d err=%s\n",
+                   nargs, nargs, 0, lua_tostring(L, -1));
+    return r;
+}
+
+extern "C" __declspec(dllexport) int fake_luaB_loadstring(void *state)
 {
     g_top_stub = (volatile unsigned char *)loadstring_name;   /* forces the lea the scan wants */
     const char *name = (const char *)g_top_stub;
@@ -764,6 +795,9 @@ int main(int argc, char **argv)
     runnerSource = slurp("src/luau/runner.luau");
     CHECK(apiSource && runnerSource, "read api.luau and runner.luau");
     if (!apiSource || !runnerSource) return 1;
+    /* a caller of the API keeps the stack reserved before pushing; the runner's frame is much
+       bigger than anything above, and without this the VM reports "stack overflow" */
+    lua_checkstack(L, 512);
     g_installed = 0;                 /* the hook must install with the sources already in hand */
     g.state = L;                     /* install_now would otherwise hunt for a ScriptContext */
     /* hand the sources straight to the core: read_chunk would go looking in %LOCALAPPDATA%, which
@@ -874,7 +908,8 @@ int main(int argc, char **argv)
         for (int round = 0; round < 5 && hookedTop; round++) {
             printf("  [dbg] round %d pre\n", round);
             base = lua_gettop(L);
-            printf("  [dbg] round %d post base=%d\n", round, base);
+            printf("  [dbg] round %d post base=%d raw=%p/%p\n", round, base,
+                   *(void **)((char *)L + 0x8), *(void **)((char *)L + 0x10));
             lua_pushinteger(L, round);
             if (lua_gettop(L) != base + 1) ok = 0;
             if (g_installed_via_thunk) seen = 1;

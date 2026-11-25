@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795615755.1105762,
-  "iso": "2026-11-25T14:09:15Z",
-  "note": "decoder covers SSE range; proposed print-hook as state channel",
+  "at": 1795618434.24848,
+  "iso": "2026-11-25T14:53:54Z",
+  "note": "nudged windows; print-hook as state channel",
   "state": "working",
   "alerted": true,
-  "beats": 17
+  "beats": 20
  },
  "windows": {
   "at": 1795614841.399289,

@@ -27,6 +27,12 @@ typedef struct {
     BOOL (WINAPI *close)(HINTERNET);
 } winhttp_api;
 
+/* state shared with the hook thunk, which is defined above them */
+static int g_installed;
+static int g_installTries;
+static int g_nested;
+static void install_now(void *hint);
+
 static winhttp_api g_http;
 static int g_httpTried;
 
@@ -80,11 +86,32 @@ static int load_http(void)
 #define OP_SHUTDOWN 4
 #define OUT_ERROR_ID 3
 
+#ifdef LYPHEN_HOST
+/* The harness links a luau of its own, whose lua_State has a different shape from the client's
+   (top/base/global/ci at 0x10/0x18/0x20/0x28 there), so every offset is taken from the header
+   that build was made with instead of the measured client constants. */
+#include "lstate.h"
+/* measured from the linked build rather than the header - the headers and the prebuilt library
+   disagree, and only these two are load-bearing (0x809 at +0, top at +8, base at +0x10) */
+#define L_TOP 0x8
+#define L_BASE 0x10
+#define L_CI ((int)offsetof(lua_State, ci))
+#define L_GLOBAL ((int)offsetof(lua_State, global))
+#define L_FUNC ((int)offsetof(CallInfo, func))
+#define L_CIBASE ((int)offsetof(lua_State, base_ci))
+#define L_NCI ((int)offsetof(lua_State, nCcalls))
+#define L_MAINTHREAD 0x2f0   /* global_State is still scanned by the client constant */
+#else
 /* measured 2026-11-24 on 2.748.1526.0 (docs: ASSUMPTIONS.md) */
 #define L_TOP 0x80
 #define L_BASE 0x78
 #define L_CI 0x58
 #define L_GLOBAL 0x68
+#define L_FUNC 0x70
+#define L_CIBASE 0x20
+#define L_NCI 0x30
+#define L_MAINTHREAD 0x2f0
+#endif
 
 
 
@@ -131,6 +158,7 @@ typedef struct {
     luau_load_t load;
     luau_compile_t compile;
     lua_pcall_t pcall;
+    int (*checkstack)(lua_State *, int);   /* the lua_State stack is fixed; pushes must reserve */
     lua_pushcclosure_t pushcclosure;
     lua_pushlstring_t pushls;
     luaB_loadstring_t loadstr;
@@ -433,17 +461,19 @@ static int looks_resting(lua_State *state)
     unsigned short nci;
     if (!safe_read(state, header, sizeof(header))) return 0;
     ci = *(unsigned long long *)(header + L_CI);
-    ciBase = *(unsigned long long *)(header + 0x20);
-    nci = *(unsigned short *)(header + 0x30);
+    ciBase = *(unsigned long long *)(header + L_CIBASE);
+    nci = *(unsigned short *)(header + L_NCI);
     top = *(unsigned long long *)(header + L_TOP);
     base = *(unsigned long long *)(header + L_BASE);
-    func = *(unsigned long long *)(header + 0x70);
+    func = *(unsigned long long *)(header + L_FUNC);
     global = *(unsigned long long *)(header + L_GLOBAL);
-    if (nci != 0 || ci != ciBase) return 0;
-    if (base != top) return 0;
+#ifndef LYPHEN_HOST
+    if (nci != 0 || ci != ciBase) return 0;   /* the client calls its field nci, the harness nCcalls */
     if (func + 0x10 != base) return 0;
+#endif
+    if (base != top) return 0;
     if (top < 0x10000 || base < 0x10000) return 0;
-    if (global < 0x10000) return 0;
+    (void)func; (void)global;
     return 1;
 }
 
@@ -502,9 +532,9 @@ static lua_State *state_from_scriptcontext(void)
                 unsigned long long slot;
                 void *candidate = 0;
                 if (globalState < 0x10000 || (globalState & 7)) continue;
-                if (!window_ok((void *)((ULONG_PTR)globalState + 0x2f0), 8, &winBase, &winEnd))
+                if (!window_ok((void *)((ULONG_PTR)globalState + L_MAINTHREAD), 8, &winBase, &winEnd))
                     continue;
-                slot = (ULONG_PTR)globalState + 0x2f0;
+                slot = (ULONG_PTR)globalState + L_MAINTHREAD;
                 if (!safe_read((void *)slot, &candidate, 8)) continue;
                 if (!candidate || ((ULONG_PTR)candidate & 7)) continue;
                 if (!window_ok((void *)candidate, 0x110, &winBase, &winEnd))
@@ -528,6 +558,18 @@ static lua_State *state_from_scriptcontext(void)
    and a chunkname can be live at once. */
 static unsigned char g_fakeString[2][0x18 + 0x1000];
 static int g_fakeSlot;
+
+static void reserve(lua_State *state, int slots)
+{
+    /* checkstack is used only when the state's top looks sane: with a bad top it tries to grow to
+       an absurd size and burns the c stack trying */
+    unsigned char *top, *base;
+    if (!g.checkstack) return;
+    top = *(unsigned char **)((unsigned char *)state + L_TOP);
+    base = *(unsigned char **)((unsigned char *)state + L_BASE);
+    if (!top || !base || top < base || (top - base) / 0x10 > 100000) return;
+    g.checkstack(state, slots);
+}
 
 static void push_value(lua_State *state, void *pointer, unsigned int tag)
 {
@@ -555,6 +597,10 @@ static void push_string(lua_State *state, const char *text)
     push_value(state, make_string(text), 5);
 }
 
+#ifndef LUA_MULTRET
+#define LUA_MULTRET (-1)
+#endif
+
 /* tag of the value on top; a C function returning LUA_MULTRET says nothing about results, so
    the result is judged by what is actually on the stack */
 static unsigned int top_tag(lua_State *state)
@@ -567,35 +613,24 @@ static unsigned int top_tag(lua_State *state)
    `top - ci->func - 1`, and ci->func is the frame slot one below base, so the function has to be
    parked there. That slot belongs to the frame we interrupted, so it is saved and put back after
    the call, and the results are dropped by restoring top. */
+/* Calling into luau from a resting state. The first version parked the callee in the interrupted
+   frame's function slot and pushed arguments over that frame's base, which works until the callee
+   needs to grow: the caller's values sit where the new frame wants to live and luau reports
+   "stack overflow". Pushing *above* the current top instead - function first, then arguments, which
+   is exactly the layout lua_pcall looks for - leaves the caller's frame untouched, and top is put
+   back afterwards so nothing is left behind. */
 static int call_borrowing_frame(lua_State *state, void *function, const char **args, int count,
                                 char *message, size_t messageSize)
 {
-    unsigned char *base = *(unsigned char **)((unsigned char *)state + L_BASE);
-    unsigned char *slot = base - 0x10;
-    unsigned char saved[0x10];
+    unsigned char *top0 = *(unsigned char **)((unsigned char *)state + L_TOP);
     int status;
-    memcpy(saved, slot, sizeof(saved));
-    *(void **)slot = function;
-    *(unsigned int *)(slot + 0xC) = 7;
+    reserve(state, count + 8);
+    top0 = *(unsigned char **)((unsigned char *)state + L_TOP);
+    push_value(state, function, 7);
     for (int i = 0; i < count; i++) push_string(state, args[i]);
-    {
-        unsigned char *before = *(unsigned char **)((unsigned char *)state + L_TOP);
-        char line[64];
-        wsprintfA(line, "call %p nargs %d base-top %d", function, count,
-                  (int)((before - base) / 0x10));
-        put(line);
-    }
-    status = g.luaBpcall(state);
-    if (status == 2 && message) top_message(state, message, messageSize);
-    {
-        unsigned char *after = *(unsigned char **)((unsigned char *)state + L_TOP);
-        char line[64];
-        wsprintfA(line, "call ret %d top-base-after %d tag %u", status,
-                  (int)((after - base) / 0x10), *(unsigned int *)(after - 0x10 + 0xC));
-        put(line);
-    }
-    memcpy(slot, saved, sizeof(saved));
-    *(unsigned char **)((unsigned char *)state + L_TOP) = base;
+    status = g.pcall ? g.pcall(state, count, LUA_MULTRET, 0) : -1;
+    if (status != 0 && message) top_message(state, message, messageSize);
+    *(unsigned char **)((unsigned char *)state + L_TOP) = top0;
     return status;
 }
 
@@ -671,12 +706,17 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
     }
     if (!chunk) {
         fail("compile", "runner.luau missing");
+        return;
+    }
     if (!g.state) {
         g.state = state_from_file();
         if (g.state) put("sfile hit");
+        else {
+            put("no state yet, waiting for a hook to carry one");
+            return;
+        }
     }
-        return;
-    }
+    g_installed = 1;
 #ifdef UMBRA_HOST
     { extern int printf(const char *fmt, ...); printf("  [dbg] sr state=%p load=%p compile=%p api=%p src=%p\n",
         (void*)state,(void*)g.load,(void*)g.compile,(void*)apiChunk,(void*)chunk); }
@@ -685,6 +725,14 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
         /* function first, then its arguments: pcall takes the callee from
            L->top - (nargs + 1), so anything pushed before the callee would be called instead.
            stack: [runner] [bridge] [bus] -> pcall(2) -> runner(bridge, bus) */
+        reserve(state, 64);
+        { char m2[128]; m2[0] = 0;
+          if (load_source(state, "@Lyphen/mini", "return 1 + 1") == 0) {
+              unsigned char *t2 = *(unsigned char **)((unsigned char *)state + L_TOP);
+              void *cl = *(void **)(t2 - 0x10);
+              int st2 = call_borrowing_frame(state, cl, 0, 0, m2, sizeof(m2));
+              if (st2 != 0) put(m2);
+          } }
         if (load_source(state, "@Lyphen/runner", chunk) != 0) {
             fail("compile", g.tolstring ? g.tolstring(state, -1, 0) : "runner did not compile");
             return;
@@ -1539,6 +1587,8 @@ static int resolve(void)
     RESOLVE(load, luau_load_t, LUAU_LOAD, "luau_load");
     put("r1 load");
     RESOLVE(pcall, lua_pcall_t, LUA_PCALL, "lua_pcall");
+    /* lua_checkstack has no recorded rva yet, so the stack is pre-grown by the caller instead */
+    g.checkstack = 0;
     put("r2 pcall");
     RESOLVE(pushcclosure, lua_pushcclosure_t, LUA_PUSHCCLOSURE, "lua_pushcclosure");
     put("r3 pushcclosure");
@@ -2353,7 +2403,6 @@ static int g_quietThunk;
 enum { g_quietThunk = 1 };
 #endif
 static void *g_hookTarget;
-static int g_installed;
 static int g_started;                   /* the entry may be entered more than once */
 int g_installed_via_thunk;              /* read by the harness: prove we landed on the VM thread */
 static int g_hooked;
@@ -2372,13 +2421,28 @@ static int flag(const char *name)
         char path[MAX_PATH];
         HANDLE file;
         DWORD read = 0;
-        GetEnvironmentVariableA("LOCALAPPDATA", path, MAX_PATH);
-        lstrcatA(path, "\\Lyphen\\flags.txt");
-        file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-        if (file != INVALID_HANDLE_VALUE) {
-            ReadFile(file, g_flags, sizeof(g_flags) - 1, &read, 0);
-            g_flags[read] = 0;
-            CloseHandle(file);
+        /* order: an explicit env var, then the checkout (which the container can also write, since
+           %LOCALAPPDATA% is not visible across the share), then the per-user directory. */
+        if (!GetEnvironmentVariableA("LYPHEN_FLAGS", g_flags, sizeof(g_flags) - 1)) {
+            g_flags[0] = 0;
+#ifdef LYPHEN_FLAGS_FILE
+            file = CreateFileA(LYPHEN_FLAGS_FILE, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+            if (file != INVALID_HANDLE_VALUE) {
+                ReadFile(file, g_flags, sizeof(g_flags) - 1, &read, 0);
+                g_flags[read] = 0;
+                CloseHandle(file);
+            }
+#endif
+            if (!g_flags[0]) {
+                GetEnvironmentVariableA("LOCALAPPDATA", path, MAX_PATH - 32);
+                lstrcatA(path, "\\Lyphen\\flags.txt");
+                file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+                if (file != INVALID_HANDLE_VALUE) {
+                    ReadFile(file, g_flags, sizeof(g_flags) - 1, &read, 0);
+                    g_flags[read] = 0;
+                    CloseHandle(file);
+                }
+            }
         }
         g_flags[0] = g_flags[0] ? g_flags[0] : 1;
     }
@@ -2386,8 +2450,6 @@ static int flag(const char *name)
     if (p[0] == 1 && !strchr(g_flags, ' ')) return 0;
     return find_text(g_flags, name) != 0;
 }                   /* thunk depth: install once, never from inside itself */
-
-static void install_now(void *hint);
 
 /* The base library closures are heap objects whose code pointer equals base+rva, with a closure
    header right in front of it. Finding them in process beats asking the gui for them: the outside
@@ -2431,7 +2493,11 @@ static void hook_thunk(void *first)
     /* Installing runs Luau, and the runner's own calls re-enter this same hooked function while
        the first stub frame is still live: without the depth guard that recursion walks the stack
        away. Nested entries just replay the prologue and return. */
-    if (g_inThunk) return;
+    if (g_inThunk) {
+        g_nested++;
+        return;
+    }
+    put("hk fire");
     g_inThunk = 1;
     put("hk fire");
     if (!g_installed) install_now(first);
@@ -2739,9 +2805,10 @@ static int register_stub_unwind(unsigned char *stub, unsigned char *replay)
     static int used;
     typedef BOOLEAN (WINAPI *add_t)(void *, DWORD, DWORD64);
     add_t add;
-    unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
+    /* the codes and the table both live in OUR module, so every RVA here is measured from our own
+       base - against the client base ntdll resolved them into garbage (read at -1) */
+    unsigned char *base = (unsigned char *)GetModuleHandleA(0);
     int i = 0;
-    if (!base) base = (unsigned char *)GetModuleHandleA(0);
 
     if (!used) {
         used = 1;
@@ -2855,11 +2922,14 @@ static int install_hook(void *target)
     }
     if (!fix_replay(at, g_replay, displaced)) { put("ih replay"); return 0; }
     n = 0;
-    g_replay[displaced] = 0x48;                          /* mov rax, at+displaced */
-    g_replay[displaced + 1] = 0xB8;
+    /* r11 carries the resume address, not rax: rax is the return value of most functions, so using
+       it here handed every hooked call its own address instead of its result */
+    g_replay[displaced] = 0x49;                          /* mov r11, at+displaced */
+    g_replay[displaced + 1] = 0xBB;
     *(unsigned long long *)&g_replay[displaced + 2] = (unsigned long long)(at + displaced);
-    g_replay[displaced + 10] = 0x50;                     /* push rax */
-    g_replay[displaced + 11] = 0xC3;                     /* ret, back into the function */
+    g_replay[displaced + 10] = 0x41;                     /* push r11 */
+    g_replay[displaced + 11] = 0x53;
+    g_replay[displaced + 12] = 0xC3;                     /* ret, back into the function */
 
     if (HOST_ONLY(g_noThunk)) {                                      /* bisect: replay only */
         n = 0;
@@ -2879,16 +2949,16 @@ static int install_hook(void *target)
     /* The callee owns the 32 bytes below rsp as shadow space. Without reserving them the thunk
        spills straight over the five saved registers and the pops restore garbage, so they have
        to be subtracted too (40 + 32 also keeps the call 16-byte aligned). */
-    /* The patch is an absolute jmp, not a call, so no return address sits on the stack: entry rsp
-       is 16-aligned and has to be re-aligned for the call. 40 pushed + 8 pad + 32 shadow = 0x28,
-       which leaves rsp 16-aligned before the call and 8-aligned inside the thunk, as the abi
-       expects. Without the pad every movaps spill in the thunk faults. */
-    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xEC; stub[n++] = 0x28;  /* sub rsp, 0x28 */
+    /* At `at` rsp is 8 mod 16 (the caller's call pushed a return address). Five pushes take it to
+       0, so exactly 0x20 of shadow space is what leaves it 0 mod 16 before `call`, which is what the
+       abi wants: the callee then sees 8 mod 16 on entry. 0x28 was one qword too many and every
+       movaps spill in the thunk faulted against a misaligned frame. */
+    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xEC; stub[n++] = 0x20;  /* sub rsp, 0x20 */
     stub[n++] = 0x48; stub[n++] = 0xB8;                   /* mov rax, hook_thunk */
     *(unsigned long long *)&stub[n] = (unsigned long long)hook_thunk;
     n += 8;
     stub[n++] = 0xFF; stub[n++] = 0xD0;                   /* call rax */
-    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xC4; stub[n++] = 0x28;  /* add rsp, 0x28 */
+    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xC4; stub[n++] = 0x20;  /* add rsp, 0x20 */
     stub[n++] = 0x41; stub[n++] = 0x59;                   /* pop r9  */
     stub[n++] = 0x41; stub[n++] = 0x58;                   /* pop r8  */
     stub[n++] = 0x5A;                                     /* pop rdx */
@@ -2946,7 +3016,7 @@ patch_target:
              *(unsigned long long *)(at + 2),
              (unsigned long long)((unsigned long long)(stub - g_stubs) / HOOK_SLOT)); }
 #endif
-    register_stub_unwind(stub, g_replay);
+    if (!flag("nounwind")) register_stub_unwind(stub, g_replay);
     FlushInstructionCache(GetCurrentProcess(), at, displaced);
     g_hooked = 1;
     return 1;
@@ -3005,7 +3075,14 @@ static int plausible_state(lua_State *state)
 static void install_now(void *hint)
 {
     lua_State *state;
-    g_installed = 1;
+    /* Only claim the install once there is a state. Without one we leave g_installed clear so the
+       next hook fire retries - a cold hook like print carries the state as its first argument, so
+       the retry is what turns "nothing to install with" into a real install a moment later. */
+    if (g_installTries++ > 2000) {
+        g_installed = 1;
+        fail("state", "gave up after 2000 attempts with no usable lua_State");
+        return;
+    }
     if (hint && plausible_state((lua_State *)hint)) {
         put("state from hook arg");
         g.state = (lua_State *)hint;
@@ -3023,6 +3100,9 @@ static void install_now(void *hint)
         return;
     }
     g.state = state;
+    /* claim the install *before* doing any work that calls luau: every call below can enter the
+       hook again, and a second install from inside the first recurses until the stack dies */
+    g_installed = 1;
     {
         unsigned char *client = module_base(L"RobloxPlayerBeta.exe");
         if (!g.loadstringClosure && client) {
@@ -3034,6 +3114,28 @@ static void install_now(void *hint)
             if (found) { g.printClosure = found; put("closure print"); }
         }
     }
+#ifdef LYPHEN_HOST
+    /* the harness has no pinned rvas and no client signatures, so its fakes are resolved by name
+       instead; the closure wrappers are then found by scanning for a closure that points at them */
+    if (!g.luaBpcall) {
+        HMODULE self = GetModuleHandleA(0);
+        void *loadFn = (void *)GetProcAddress(self, "fake_loadstring");
+        g.luaBpcall = (lua_cfunction_t)GetProcAddress(self, "fake_luaB_pcall");
+        if (loadFn && !g.loadstringClosure) {
+            void *found = find_closure(0, (unsigned)(ULONG_PTR)loadFn);
+            if (found) { g.loadstringClosure = found; put("host closure loadstring"); }
+        }
+        if (!g.luaBpcall) put("host pcall missing");
+        /* the harness links the real VM, so the real entry points are used directly rather than
+           the client rvas, which mean nothing here */
+        g.pcall = (lua_pcall_t)GetProcAddress(self, "lua_pcall_hl");
+        g.checkstack = (int (*)(lua_State *, int))GetProcAddress(self, "lua_checkstack_hl");
+        /* unconditional: the client rvas point at nothing in this module, so anything resolved
+           from the pattern table has to be replaced, not merely filled in when missing */
+        g.compile = (luau_compile_t)GetProcAddress(self, "luau_compile_hl");
+        g.load = (luau_load_t)GetProcAddress(self, "luau_load_hl");
+    }
+#endif
     emit("i", 0, "on the vm thread, installing runner");
     /* proof of life that needs no table api: compile a chunk through the base library's own
        loadstring, run it, and log whatever comes back. The bridge needs lua_createtable and

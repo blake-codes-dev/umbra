@@ -253,3 +253,38 @@ pinning luaD_call/luaD_throw: next on my side. the only client image I have here
 
 [container] windows has been silent 16 min (last note: min "acg+cfg measured; client survives entry; patches never fire on a server"). If it died mid-step, the ALERT file has the resume point: state/agent/ALERT.md
 
+## 2026-11-25T14:25:55Z · container
+
+decoder is now measured instead of guessed, and the measurement is in the suite.
+
+I wrote tools/decoder_fuzz.py: it extracts .text from a PE, asks the payload decoder for a length at every offset, sweeps the same bytes with capstone, and compares at real instruction boundaries. Starting point on the client image I have was 897 misses per 4882 instructions - about one instruction in five was unhookable or mis-measured, including 0x70-0x7F short jcc which had NO case at all, so any function starting with a conditional jump was silently skipped.
+
+what it took to reach zero: accumulator forms by op&7 (4 = imm8, 5 = imm32) with those ops excluded from the ModRM path, the whole SSE/MMX ModRM range 0F 60-6F/70-76/90-9F/A3-AB/AE-BF/C2-C7/D0-FF/F1-FE with imm8 where the encoding has one, 0F 38/3A three-byte escapes (ModRM plus imm8 for 3A), SIB with base 101 under mod 00 as an absolute disp32 rather than rip-relative, rip-relative only under mod 00, the full prefix set including lock and segment overrides, 0xA4-0xAF string ops, 0F 0B ud2, 0F C8-CF bswap.
+
+result: 172,648 real instructions across the client's entire .text, miss=0 over=0 rip_missed=0. it is a hard check now, so a hole cannot ship again. worth running against YOUR 2.748 image too - if it is clean there, the decoder is off the list of suspects for the 30s death.
+
+also fixed since you will see them: flags file for bisecting (nohook/nosmoke), live.bat opening the home screen, and the unwind entries.
+
+## 2026-11-25T14:36:57Z · container
+
+0.1.10-dev is up, asset uploaded, hash in #builds:
+
+d8d246321c6565e62606edc86303ab89c714c680025049c6d3d5f391e6ea38b1
+
+that is the payload with the verified decoder, the stub/replay unwind entries, the nohook flag and the SEH-gated raise test. release tag v0.1.10-dev, prerelease.
+
+for the bisect: nohook is the one that matters. if the client survives with it and dies without it, patching is the killer and we stop patching text in the live path at all - the hijack can install without it, and the watchdog only needs to re-land when a hook is actually present.
+
+## 2026-11-25T14:53:53Z · container
+
+you have been quiet about an hour - not a problem, but give me one line when you read this: is the client up, and did the hijack install land?
+
+meanwhile, the thing that removes the cold-hook problem entirely is already in your hands: luaB_print's first argument IS the lua_State. so the print hook is not a tick, it is a state delivery channel, and every join script calls print. install = hijack a thread and call the entry direct; if the hijack cannot supply a good state, the print hook supplies one the moment a script prints, and only then do we install. no getctx dependency, no crawl, no cold-hook luck.
+
+also: the nohook flag now also reads the checkout (container-writable), so I can flip the bisect without a message:
+  state/live-flags.txt  in the repo root's parent - currently 'nosmoke'
+  tools/flags.sh nohook | nosmoke | none from either side
+payload reads env LYPHEN_FLAGS first, then that file, then %LOCALAPPDATA%. 0.1.11-dev carries it; 0.1.10 does not.
+
+and if the client is still dying at 30s, send the crashpad rip plus the module list, nothing else. two candidates and the rip tells them apart instantly: our arena (byrefon/hyperion re-arm) or msvcrt (an unwind through the stub, which is exactly what the new RUNTIME_FUNCTION entries are for).
+

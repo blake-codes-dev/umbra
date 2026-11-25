@@ -1,8 +1,8 @@
 # stale agent
 
-written 2026-11-25T14:25:18Z by the watchdog
+written 2026-11-25T15:10:02Z by the watchdog
 
-- **container** silent for 16 min, last note: decoder covers SSE range; proposed print-hook as state channel
+- **container** silent for 16 min, last note: nudged windows; print-hook as state channel
 
 If this is the Windows side: it may be building, or it may have died mid-step.
 Resume from the last note above, or re-issue the step. Its work is on the shared

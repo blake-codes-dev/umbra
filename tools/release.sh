@@ -28,7 +28,9 @@ proj=src/app/Umbra
 mkdir -p src/app/Umbra/payload
 if [ -f src/native/core.c ]; then
   if command -v x86_64-w64-mingw32-gcc >/dev/null; then
-    x86_64-w64-mingw32-gcc -shared -O2 -mno-stack-arg-probe src/native/core.c \
+    # allow-multiple-definition: mingw's pesect.o and the CRT both define
+    # _IsNonwritableInCurrentImage once the code touches image sections
+    x86_64-w64-mingw32-gcc -shared -O2 -mno-stack-arg-probe -Wl,--allow-multiple-definition src/native/core.c \
       -o src/app/Umbra/payload/core.dll -lwinhttp -luser32 || {
         echo "core.dll build failed"; exit 1; }
     echo "core.dll built with mingw (SEH guards are MSVC-only; build.bat on Windows is the real one)"

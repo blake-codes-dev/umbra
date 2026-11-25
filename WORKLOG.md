@@ -35,3 +35,14 @@ One line per work block: what changed, what was measured, what is next.
 - Shipped v0.1.7-dev (95a45d45...), asset uploaded, #builds posted.
 - 2026-11-25 00:50 · hook defect reproduced natively with MSVC and fixed, three real bugs deep: (1) every install reused one stub page, so a second hook overwrote the first hook's replay; each hook now owns a 256-byte slot; (2) re-installing on a target whose entry was already our `E9` replayed that jump, so the tail landed mid-patch — installs are now idempotent per target and rebuild from the saved prologue; (3) displaced instructions were replayed verbatim at a new address, so `jmp rel32`/`call rel32`/rel8 branches and rip-relative operands went to the wrong place (an ILT body is nothing but `jmp rel32`) — `fix_replay` re-encodes all of them, and refuses a hook it cannot fix. Also: the stub never reserved the 32-byte shadow space, so `hook_thunk` spilled over the five saved registers; the pops then restored garbage. Suite goes from crash to 24/24 natively at /Od and /O2, and `src\native\build.bat` builds core.dll under MSVC for the first time — 34 KB, no CRT, `/GS-`, with the handful of crt symbols the compiler and SEH dispatch still emit provided in-file (CFG thunk, section check, heap wrappers, isa/favor words) instead of dragging in CRT startup.
 - 2026-11-25 00:52 · harness portability: the fakes now carry an ATTR_NOINLINE/used pair for both compilers, a 3-byte `fake_wait` was too short for a 5-byte patch (it ate the next function's entry, which is what made the check look Wine-specific), and setvbuf plus a faulting-module dump make a crash readable instead of silent. tests/README will note the suite is built /Od so the synthetic anchors keep the shapes the scanner looks for.
+
+## 2026-11-25 05:52 - no thread of our own; 0.1.8-dev
+
+- Install is now an APC to the client's existing threads, entry re-entrant guarded, remote thread
+  only as a two-second fallback. Fewer objects for an anti-cheat to notice.
+- Hooks got a stub arena (several can be resident) and `fix_replay` learned rip-relative operands -
+  a `mov eax,[rip+x]` prologue used to be replayed unpatched and faulted. Decoder now reports the
+  flag instead of a hand-written opcode table.
+- `release.sh` needed `-Wl,--allow-multiple-definition`: mingw's pesect.o and the CRT both define
+  `_IsNonwritableInCurrentImage` once image sections are touched.
+- Shipped 0.1.8-dev (fa2d047f...), asset + hash posted, mail and relay pinged to the Windows side.

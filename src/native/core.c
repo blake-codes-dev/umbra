@@ -1099,10 +1099,15 @@ static int resolve(void)
         fail("scan", "RobloxPlayerBeta.exe is not loaded");
         return 0;
     }
+    put("r0 base ok");
     RESOLVE(load, luau_load_t, LUAU_LOAD, "luau_load");
+    put("r1 load");
     RESOLVE(pcall, lua_pcall_t, LUA_PCALL, "lua_pcall");
+    put("r2 pcall");
     RESOLVE(pushcclosure, lua_pushcclosure_t, LUA_PUSHCCLOSURE, "lua_pushcclosure");
+    put("r3 pushcclosure");
     RESOLVE(createtable, lua_createtable_t, LUA_CREATETABLE, "lua_createtable");
+    put("r4 rest done");
     RESOLVE(setfield, lua_setfield_t, LUA_SETFIELD, "lua_setfield");
     RESOLVE(rawseti, lua_rawseti_t, LUA_RAWSETI, "lua_rawseti");
     RESOLVE(pushls, lua_pushlstring_t, LUA_PUSHLSTRING, "lua_pushlstring");
@@ -1115,7 +1120,9 @@ static int resolve(void)
     /* nothing measured yet (the shipped text is packed, so these are normally all zero):
        calibrate in memory and keep whatever worked */
     if (!g.load || !g.pcall) {
+        put("r5 calibrate");
         if (!calibrate(base)) emit("e", 0, "calibration failed, the executor stays dumb");
+        put("r6 calibrated");
         g.compile = 0;   /* discovered lazily below */
     }
     ok = g.load && g.pcall && g.pushcclosure && g.createtable && g.setfield && g.rawseti;
@@ -1788,6 +1795,7 @@ enum { g_quietThunk = 1 };
 #endif
 static void *g_hookTarget;
 static int g_installed;
+static int g_started;                   /* the entry may be entered more than once */
 int g_installed_via_thunk;              /* read by the harness: prove we landed on the VM thread */
 static int g_hooked;
 static char *g_apiSource;
@@ -1807,6 +1815,8 @@ static void hook_thunk(void)
 
 /* Length of one instruction, enough for the prologues these wrappers start with. Returns 0 on
    anything it does not understand, and the hook is then skipped rather than guessed at. */
+static int g_insn_rip;                  /* set when the last decoded instruction was rip-relative */
+
 static int sub_insn_len(const unsigned char *code)
 {
     int i = 0;
@@ -1818,6 +1828,7 @@ static int sub_insn_len(const unsigned char *code)
         i++;
     if (i < 4 && code[i] >= 0x40 && code[i] <= 0x4F) { rex = 1; i++; }
     if (i >= 8) return 0;
+    g_insn_rip = 0;
     op = code[i++];
 
     if (op >= 0x50 && op <= 0x5F) return i;                 /* push/pop reg */
@@ -1837,7 +1848,7 @@ static int sub_insn_len(const unsigned char *code)
             if (rm == 4) { i++; }                            /* sib */
             if (mod == 1) disp = 1;
             else if (mod == 2) disp = 4;
-            else if (rm == 5) disp = 4;                      /* rip-relative */
+            else if (rm == 5) { disp = 4; g_insn_rip = 1; }  /* rip-relative */
         }
         i += disp;
         if (op == 0x83) imm = 1;
@@ -1870,6 +1881,16 @@ static int fix_replay(unsigned char *at, unsigned char *replay, int displaced)
         int len = sub_insn_len(at + off);
         int p = 0, op, rel = 0, width = 0;
         if (!len) return 0;
+        if (g_insn_rip) {
+            /* the absolute target is the same, so recompute the displacement from the replay copy */
+            signed long long absolute;
+            int fresh;
+            memcpy(&rel, at + off + len - 4, 4);
+            absolute = (signed long long)(at + off + len) + rel;
+            fresh = (int)(absolute - (signed long long)(replay + off + len));
+            memcpy(replay + off + len - 4, &fresh, 4);
+        }
+        if (!len) return 0;
         while (p < 3 && (at[off + p] == 0x66 || at[off + p] == 0x67
                          || at[off + p] == 0xF2 || at[off + p] == 0xF3)) p++;
         if (at[off + p] >= 0x40 && at[off + p] <= 0x4F) p++;
@@ -1880,18 +1901,23 @@ static int fix_replay(unsigned char *at, unsigned char *replay, int displaced)
         if (width) {
             /* displacement sits at the end of the instruction */
             if (width == 4) {
-                int target, fresh;
+                signed long long target;
+                int fresh;
                 memcpy(&rel, at + off + len - 4, 4);
-                target = (int)(at + off + len) + rel;
-                fresh = target - (int)(replay + off + len);
+                target = (signed long long)(at + off + len) + rel;
+                fresh = (int)(target - (signed long long)(replay + off + len));
                 memcpy(replay + off + len - 4, &fresh, 4);
             }
             else {
                 {
-                    int target, rel8 = (unsigned char)at[off + len - 1];
+                    signed long long target_rel8_holder;
+                    int rel8 = (unsigned char)at[off + len - 1];
+                    signed long long target;
+                    int fresh;
                     if (rel8 & 0x80) rel8 -= 0x100;
-                    target = (int)(at + off + len) + rel8;
-                    int fresh = target - (int)(replay + off + len);
+                    target = (signed long long)(at + off + len) + rel8;
+                    target_rel8_holder = target;
+                    fresh = (int)(target_rel8_holder - (signed long long)(replay + off + len));
                     if (fresh > 127 || fresh < -128) return 0;
                     replay[off + len - 1] = (unsigned char)fresh;
                 }
@@ -2043,6 +2069,10 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
     bus_header *header;
 
     (void)parameter;
+
+    /* several threads may pick up the apc (and the fallback may run too): only the first installs */
+    if (g_started) return 0;
+    g_started = 1;
 #ifndef UMBRA_HOST
     /* a manual map never runs DllMain, so the CFG thunks have to come up here */
     if (!g_guardReady) { g_guardReady = 1; init_guard_thunks(); }
@@ -2067,6 +2097,7 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
     }
     put(path);
     if (!g.bus) {
+        put("m3 bus fail");
         fail("bus", "no mapping");
         return 1;
     }
@@ -2079,14 +2110,18 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
         header->flags = 0;
     }
 
+    put("m4 bus ok");
     stage("pipe");
-    if (!open_pipe()) emit("e", 0, "pipe: no gui could connect");
+    if (!open_pipe()) { put("m5 pipe fail"); emit("e", 0, "pipe: no gui could connect"); }
+    else put("m5 pipe ok");
 
+    put("m6 pipe done");
     stage("scan");
     if (!resolve()) {
         emit("e", 0, "resolve failed, see the scan stage");
     }
 
+    put("m7 resolved");
     stage("state");
     put("dbg state");
     g.state = state_from_scriptcontext();
@@ -2100,7 +2135,7 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
         /* gettop is the trigger of choice: it is called constantly, it never throws, and it has no
            frame of its own, so replaying its prologue cannot disturb error handling. The trampoline
            page carries no unwind info, so a throwing function is the wrong place to stand in. */
-        else if (g.gettop && install_hook((void *)g.gettop))
+        else if (put("m8 runner read"), g.gettop && install_hook((void *)g.gettop))
             emit("i", 0, "waiting for the vm thread");
         else {
             /* no hook possible: fall back to installing from here, which is the racy path */

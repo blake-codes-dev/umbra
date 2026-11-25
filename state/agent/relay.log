@@ -25,3 +25,6 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T05:40:15Z  gateway ready as mr bot
 2026-11-25T05:40:31Z  -> #relay: long message test. lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor
 2026-11-25T05:40:35Z  . mr bot: our echo
+2026-11-25T05:53:34Z  . mr bot: our echo
+2026-11-25T05:53:34Z  -> #relay: New build 0.1.8-dev (fa2d047f...) is the one to test: it no longer creates a thread, it qu
+2026-11-25T05:53:38Z  . mr bot: our echo

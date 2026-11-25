@@ -73,10 +73,10 @@ public sealed class Injector
     private static extern IntPtr LoadLibraryA(string name);
 
     [DllImport("kernel32", SetLastError = true)]
-    private static extern uint GetProcessId(IntPtr process);
-
-    [DllImport("kernel32", SetLastError = true)]
     private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint pid);
+
+    [DllImport("kernel32")]
+    private static extern int GetProcessId(IntPtr process);
 
     [DllImport("kernel32", CharSet = CharSet.Unicode)]
     private static extern bool Module32First(IntPtr snapshot, ref ModuleEntry entry);
@@ -102,10 +102,10 @@ public sealed class Injector
     
 
     [DllImport("kernel32", SetLastError = true)]
-    private static extern bool VirtualFreeEx(IntPtr process, IntPtr at, UIntPtr size, uint type);
+    private static extern bool VirtualProtectEx(IntPtr process, IntPtr at, UIntPtr size, uint protect, out uint old);
 
     [DllImport("kernel32", SetLastError = true)]
-    private static extern bool VirtualProtectEx(IntPtr process, IntPtr at, UIntPtr size, uint protect, out uint old);
+    private static extern bool VirtualFreeEx(IntPtr process, IntPtr at, UIntPtr size, uint type);
 
     [DllImport("kernel32", SetLastError = true)]
     private static extern bool WriteProcessMemory(IntPtr process, IntPtr at, byte[] buffer, UIntPtr size, out UIntPtr written);
@@ -118,7 +118,20 @@ public sealed class Injector
         IntPtr start, IntPtr parameter, uint flags, out uint id);
 
     [DllImport("kernel32", SetLastError = true)]
+    private static extern bool GetExitCodeThread(IntPtr thread, out uint code);
+
+    [DllImport("kernel32", SetLastError = true)]
     private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+
+    /// <summary>Queue an APC to a thread, far less visible than a thread of our own.</summary>
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern bool QueueUserAPC(IntPtr routine, IntPtr thread, IntPtr parameter);
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern IntPtr OpenThread(uint access, bool inherit, uint id);
+
+    [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool WaitNamedPipe(string name, uint timeout);
 
     [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Ansi)]
     private static extern IntPtr GetModuleHandleA(string name);
@@ -127,6 +140,55 @@ public sealed class Injector
     private static extern IntPtr GetProcAddress(IntPtr module, string name);
 
     public sealed record Result(bool Ok, string Message, int Pid);
+
+        /// <summary>
+        /// Runs the entry on threads the client already has, so no new thread object appears in the
+        /// process. Each thread picks the APC up the next time it becomes alertable, which for a
+        /// game loop is immediate, so all of them are queued rather than guessing one.
+        /// </summary>
+    private static int QueueToThreads(IntPtr process, IntPtr start)
+    {
+        const uint ThreadSetInformation = 0x20;
+        const uint ThreadSuspendResume = 0x2;
+        var pid = GetProcessId(process);
+        var snapshot = CreateToolhelp32Snapshot(0x4, (uint)pid);
+        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return 0;
+
+        var queued = 0;
+        try
+        {
+            var entry = new ThreadEntry { Size = (uint)Marshal.SizeOf<ThreadEntry>() };
+            if (!Thread32First(snapshot, ref entry)) return 0;
+            do
+            {
+                if (entry.OwnerPid != pid) continue;
+                var thread = OpenThread(ThreadSetInformation | ThreadSuspendResume, false, entry.ThreadId);
+                if (thread == IntPtr.Zero) continue;
+                if (QueueUserAPC(start, thread, IntPtr.Zero)) queued++;
+                CloseHandle(thread);
+            } while (Thread32Next(snapshot, ref entry));
+        }
+        finally { CloseHandle(snapshot); }
+        return queued;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ThreadEntry
+    {
+            public uint Size;
+            public uint Usage;
+            public uint ThreadId;
+            public uint OwnerPid;
+            public int BasePriority;
+            public int DeltaPriority;
+            public uint Flags;
+        }
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern bool Thread32First(IntPtr snapshot, ref ThreadEntry entry);
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern bool Thread32Next(IntPtr snapshot, ref ThreadEntry entry);
 
     /// <summary>Client processes, newest first. Empty means "launch it for them".</summary>
     public static List<Process> FindClients()
@@ -202,19 +264,47 @@ public sealed class Injector
                 var entryRva = pe.Export("umbra_entry");
                 if (entryRva == 0) entryRva = pe.EntryPoint;
                 var start = remote + (nint)entryRva;
+                var probe = new byte[16];
+                var got = ReadProcessMemory(process, start, probe, (UIntPtr)16, out var nread);
+                var wantAt = pe.OffsetOf(entryRva);
+                Console.WriteLine($"  entry rva {entryRva:x} at {start.ToInt64():x} read {got}/{nread} bytes {BitConverter.ToString(probe)} want {BitConverter.ToString(image, wantAt, 16)}");
                 Protect(process, remote, pe.SizeOfImage, PageExecuteReadWrite);
-                var thread = CreateRemoteThread(process, IntPtr.Zero, UIntPtr.Zero, start, IntPtr.Zero, 0, out _);
-                if (thread == IntPtr.Zero) return new(false, "remote thread refused", pid);
-                WaitForSingleObject(thread, 2000);
-                CloseHandle(thread);
 
-                // give the core a moment to create its pipe, then let the caller attach
+                // the entry is guarded, so being handed to several threads is harmless
+                var queued = Injector.QueueToThreads(process, start);
+                var how = $"mapped {pe.SizeOfImage / 1024} KB";
+                var pipe = @"\\.\pipe\umbra-" + pid;
+                var ready = false;
                 for (var i = 0; i < 40; i++)
                 {
-                    if (Directory.GetFiles(@"\\.\pipe\", $"umbra-{pid}").Length > 0) break;
+                    if (Directory.GetFiles(@"\\.\pipe\", $"umbra-{pid}").Length > 0 || WaitNamedPipe(pipe, 0))
+                    {
+                        ready = true;
+                        break;
+                    }
                     Thread.Sleep(50);
                 }
-                return new(true, $"mapped {pe.SizeOfImage / 1024} KB", pid);
+
+                if (!ready)
+                {
+                    // nothing became alertable in two seconds: fall back to a thread, visibly
+                    queued = 0;
+                    var thread = CreateRemoteThread(process, IntPtr.Zero, UIntPtr.Zero, start, IntPtr.Zero, 0, out _);
+                    if (thread == IntPtr.Zero)
+                        return new(false, "neither an apc nor a thread took", pid);
+                    WaitForSingleObject(thread, 2000);
+                    GetExitCodeThread(thread, out var code);
+                    Console.WriteLine($"  thread exit {code:x}");
+                    CloseHandle(thread);
+                    for (var i = 0; i < 40; i++)
+                    {
+                        if (Directory.GetFiles(@"\\.\pipe\", $"umbra-{pid}").Length > 0) break;
+                        Thread.Sleep(50);
+                    }
+                    return new(true, how + ", own thread", pid);
+                }
+
+                return new(true, $"{how}, on {queued} existing thread{(queued == 1 ? "" : "s")}", pid);
             }
             catch (Exception)
             {
@@ -408,7 +498,7 @@ public sealed class Injector
         private static IntPtr RemoteModule(IntPtr process, string name)
         {
             var pid = GetProcessId(process);
-            var snapshot = CreateToolhelp32Snapshot(0x8, pid);
+            var snapshot = CreateToolhelp32Snapshot(0x8, (uint)pid);
             if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return IntPtr.Zero;
             try
             {
@@ -423,6 +513,9 @@ public sealed class Injector
             }
             finally { CloseHandle(snapshot); }
         }
+
+        [DllImport("kernel32", SetLastError = true)]
+        private static extern bool VirtualFreeEx(IntPtr process, IntPtr at, UIntPtr size, uint type);
 
         /// <summary>Binds imports against the module already loaded in the target.</summary>
         public bool BindImports(IntPtr process, IntPtr remote)

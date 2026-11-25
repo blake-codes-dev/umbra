@@ -1237,6 +1237,54 @@ static void *find_push(int kind)
     return 0;
 }
 
+static const unsigned char pop_one[] = { 0x48, 0x83, 0x69, 0x80, 0x10 };
+static const unsigned char pop_two[] = { 0x48, 0x83, 0x69, 0x80, 0x20 };
+
+/* setters pop before they work: one slot for setfield, two for rawseti */
+static void *find_pop(const unsigned char *needle)
+{
+    unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
+    size_t i, span = 8u << 20;
+    unsigned char *start;
+    if (!base) return 0;
+    start = base + 0x1000;
+    for (i = 0; i + 48 < span; i++) {
+        unsigned char code[48];
+        int j, call = 0;
+        if (!safe_read(start + i, code, sizeof(code))) return 0;
+        if (memcmp(code, needle, 5)) continue;
+        for (j = 5; j < 44; j++) if (code[j] == 0xE8) { call = 1; break; }
+        if (call) return start + i;
+    }
+    return 0;
+}
+
+/* a table constructor: allocates through a call, then pushes. It takes three arguments, so the
+   third one has to be read somewhere in the first bytes - that is what separates it from the
+   string pusher, which only takes one. */
+static void *find_createtable(void)
+{
+    unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
+    size_t i, span = 8u << 20;
+    unsigned char *start;
+    if (!base) return 0;
+    start = base + 0x1000;
+    for (i = 0; i + 56 < span; i++) {
+        unsigned char code[56];
+        int j, call = -1, third = 0;
+        if (!safe_read(start + i, code, sizeof(code))) return 0;
+        for (j = 0; j + 5 < 40; j++)
+            if (code[j] == 0x48 && code[j + 1] == 0x83 && code[j + 2] == 0x41 &&
+                code[j + 3] == 0x80 && code[j + 4] == 0x10) break;
+        if (j + 5 >= 40) continue;
+        for (int k = 1; k < j; k++) if (code[k] == 0xE8) { call = k; break; }
+        if (call < 0) continue;
+        for (int k = 0; k < call; k++) if (code[k] == 0x44 || code[k] == 0x45) { third = 1; break; }
+        if (third) return start + i;
+    }
+    return 0;
+}
+
 static void report_pick(const char *label, void *at)
 {
     char line[96];
@@ -1287,6 +1335,12 @@ static int calibrate(unsigned char *base)
         report_pick("pushnum", (void *)g.pushnumber);
     if (!g.pushls && (g.pushls = (lua_pushlstring_t)find_push(3)) != 0)
         report_pick("pushstr", (void *)g.pushls);
+    if (!g.setfield && (g.setfield = (lua_setfield_t)find_pop(pop_one)) != 0)
+        report_pick("setfield", (void *)g.setfield);
+    if (!g.rawseti && (g.rawseti = (lua_rawseti_t)find_pop(pop_two)) != 0)
+        report_pick("rawseti", (void *)g.rawseti);
+    if (!g.createtable && (g.createtable = (lua_createtable_t)find_createtable()) != 0)
+        report_pick("newtable", (void *)g.createtable);
     return g.load && g.pcall && g.pcall != (lua_pcall_t)g.load;
 }
 

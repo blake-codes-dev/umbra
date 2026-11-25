@@ -40,3 +40,5 @@
 /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/obj/Release/net9.0-windows/win-x64/Umbra.pdb
 /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/obj/Release/net9.0-windows/win-x64/Umbra.genruntimeconfig.cache
 /config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/obj/Release/net9.0-windows/win-x64/ref/Umbra.dll
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/bin/Release/net9.0-windows/win-x64/luau/runner.luau
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Umbra/bin/Release/net9.0-windows/win-x64/luau/api.luau

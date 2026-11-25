@@ -307,13 +307,46 @@ public partial class MainWindow : Window
     public async void Attach_Click(object sender, RoutedEventArgs e)
     {
         AttachBtn.IsEnabled = false;
-        await _backend.AttachAsync(PidBox.Text.Trim());
-        AttachBtn.IsEnabled = true;
-        DetachBtn.IsEnabled = _backend.State == InjectState.Attached;
-        if (_backend.State == InjectState.Attached)
+        try
         {
-            FootprintText.Text = "+0 modules, +0 threads, +0 windows, +8 KB private RX. Client survived.";
+            var pid = PidBox.Text.Trim();
+            if (pid.Length == 0)
+            {
+                // no id given: use the client that is already running, if there is one
+                var clients = Injector.FindClients();
+                if (clients.Count == 0)
+                {
+                    Print("no Roblox client running - start it, then press attach again", true);
+                    return;
+                }
+                pid = clients[0].Id.ToString();
+                PidBox.Text = pid;
+            }
+
+            Runtime.Ensure();
+            if (!Runtime.Ready)
+            {
+                Print($"payload missing: {Runtime.PayloadDll}", true);
+                return;
+            }
+
+            Print($"mapping into pid {pid}");
+            var result = await Task.Run(() => new Injector().Inject(int.Parse(pid), Runtime.PayloadDll));
+            Print(result.Ok ? $"mapped, {result.Message}" : $"inject failed: {result.Message}", !result.Ok);
+            if (!result.Ok) return;
+
+            if (!await _backend.AttachAsync(pid))
+            {
+                Print("mapped but the pipe did not answer - check the client", true);
+                return;
+            }
+            FootprintText.Text = "mapped by hand: no module entry, no file on disk. Only the call thread is ours.";
             NavConsole.IsChecked = true;
+        }
+        finally
+        {
+            AttachBtn.IsEnabled = true;
+            DetachBtn.IsEnabled = _backend.State == InjectState.Attached;
         }
     }
 
@@ -340,6 +373,10 @@ public partial class MainWindow : Window
         StatusText.Text = text;
         StatusDot.Background = brush;
     }
+
+    /// <summary>One line into the console pane from our own code, not from the payload.</summary>
+    private void Print(string text, bool error = false) =>
+        OnOutput(new ConsoleLine(text, error));
 
     private void OnOutput(ConsoleLine line)
     {

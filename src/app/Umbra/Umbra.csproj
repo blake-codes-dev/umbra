@@ -24,4 +24,12 @@
           CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\luau\menu.luau" Link="library\menu.luau" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- the runner payload the core loads out of %LOCALAPPDATA%: copied next to the exe, then
+       staged by Runtime.EnsureRuntime on launch -->
+  <ItemGroup>
+    <None Include="..\..\luau\runner.luau" Link="luau\runner.luau" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\luau\api.luau" Link="luau\api.luau" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native\core.dll" Link="native\core.dll" CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('native\core.dll')" />
+  </ItemGroup>
 </Project>

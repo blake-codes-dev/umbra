@@ -21,6 +21,9 @@ static int g_heartbeat = 0;      /* registry ref of the RunService.Heartbeat han
 static int g_failures;
 static HANDLE g_busFile;
 
+static void pipe_collect(char *sink, size_t size, int steps);
+extern HANDLE g_client;
+
 #define CHECK(condition, label)                                        \
     do {                                                               \
         if (condition) {                                               \
@@ -195,7 +198,9 @@ static int exec(const char *source, char *transcript, size_t size)
     unsigned int errors = 0;
     queue_command(OP_EXEC, 42, source);
     fire_heartbeat();
-    pump_output(transcript, size, &errors);
+    if (g_client != INVALID_HANDLE_VALUE) pipe_collect(transcript, size, 6);
+    else pump_output(transcript, size, &errors);
+    if (find_text(transcript, "\"op\":\"fail\"")) errors++;
     return errors;
 }
 
@@ -213,6 +218,50 @@ static char *slurp(const char *path)
     return buffer;
 }
 
+/* ---------------------------------------------------------------- pipe */
+HANDLE g_client = INVALID_HANDLE_VALUE;
+static DWORD WINAPI serve_thread(void *x) { (void)x; serve(); return 0; }
+
+static int pipe_write(const char *line)
+{
+    DWORD written = 0;
+    return WriteFile(g_client, line, (DWORD)lstrlenA(line), &written, 0) != 0;
+}
+
+/* collect whatever the core wrote, appending, for a bounded number of ticks */
+static void pipe_collect(char *sink, size_t size, int steps)
+{
+    char chunk[4096];
+    DWORD read = 0;
+    for (int i = 0; i < steps; i++) {
+        fire_heartbeat();
+        while (PeekNamedPipe(g_client, 0, 0, 0, &read, 0) && read > 0) {
+            if (!ReadFile(g_client, chunk, sizeof(chunk) - 1, &read, 0) || read == 0) break;
+            chunk[read] = 0;
+            if (lstrlenA(sink) + read + 1 < size) lstrcatA(sink, chunk);
+        }
+        Sleep(15);
+    }
+}
+
+/* stop as soon as the needle shows up */
+static int pipe_expect(const char *needle, char *sink, size_t size, int steps)
+{
+    char chunk[4096];
+    DWORD read = 0;
+    for (int i = 0; i < steps; i++) {
+        fire_heartbeat();
+        while (PeekNamedPipe(g_client, 0, 0, 0, &read, 0) && read > 0) {
+            if (!ReadFile(g_client, chunk, sizeof(chunk) - 1, &read, 0) || read == 0) break;
+            chunk[read] = 0;
+            if (lstrlenA(sink) + read + 1 < size) lstrcatA(sink, chunk);
+        }
+        if (find_text(sink, needle)) return 1;
+        Sleep(15);
+    }
+    return 0;
+}
+
 int main(void)
 {
     char transcript[16384];
@@ -222,6 +271,18 @@ int main(void)
     unsigned int errors = 0;
 
     printf("umbra native harness\n");
+    {
+        char pipeName[64];
+        wsprintfA(pipeName, "\\\\.\\pipe\\umbra-%u", GetCurrentProcessId());
+        {
+            int opened = open_pipe();
+            printf("  [dbg] open_pipe=%d err=%lu\n", opened, GetLastError());
+            CHECK(opened, "core opens its pipe");
+        }
+        g_client = CreateFileA(pipeName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
+        CHECK(g_client != INVALID_HANDLE_VALUE, "gui connects to the pipe");
+        CreateThread(0, 0, serve_thread, 0, 0, 0);
+    }
 
     /* the bus, exactly as the core creates it */
     GetTempPathA(MAX_PATH, busPath);
@@ -285,7 +346,7 @@ int main(void)
     exec("print('hello from umbra')", transcript, sizeof(transcript));
     printf("  exec 1: %s", transcript);
     CHECK(find_text(transcript, "hello from umbra") != 0, "print captured through the bus");
-    CHECK(find_text(transcript, "[5]") != 0, "done flag written");
+    CHECK(find_text(transcript, "\"op\":\"done\"") != 0, "done flag written");
 
     /* the file bridge, through api.luau */
     exec("writefile('t/one.txt', 'written by a script') "
@@ -312,6 +373,15 @@ int main(void)
     errors = exec("error('deliberate')", transcript, sizeof(transcript));
     printf("  exec 5: %s", transcript);
     CHECK(errors > 0, "script error reported on the error channel");
+
+    /* the gui path: hello -> ready, then exec over the pipe reaches the runner */
+    CHECK(pipe_write("{\"op\":\"hello\",\"proto\":1}\n"), "gui writes hello");
+    CHECK(pipe_expect("\"op\":\"ready\"", transcript, sizeof(transcript), 60), "core answers ready");
+    printf("  pipe: %s", transcript);
+    CHECK(pipe_write("{\"op\":\"exec\",\"id\":9,\"code\":\"print('over the pipe')\"}\n"),
+          "gui writes exec");
+    CHECK(pipe_expect("over the pipe", transcript, sizeof(transcript), 80), "exec reached the runner");
+    CHECK(pipe_expect("\"op\":\"log\"", transcript, sizeof(transcript), 20), "output came back as a log line");
 
     printf("%s (%d failures)\n", g_failures ? "FAILED" : "PASSED", g_failures);
     return g_failures ? 1 : 0;

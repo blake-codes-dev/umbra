@@ -103,6 +103,7 @@ static const char *find_text(const char *haystack, const char *needle);
 static void push_bus(lua_State *state);
 static void push_bridge(lua_State *state, const char *apiSource);
 static int resolve(void);
+static int open_pipe(void);
 static char g_stage[32] = "start";
 
 /* ------------------------------------------------------------------ plumbing */
@@ -129,6 +130,30 @@ static void put(const char *s)
     }
 }
 
+static void emit(const char *kind, unsigned int id, const char *text);
+
+/* a failure is tagged with the stage it happened in, so one run is diagnosable */
+static void fail(const char *where, const char *text)
+{
+    char line[256];
+    char *o = line;
+    const char *a = "fail ";
+    while (*a) *o++ = *a++;
+    while (*where) *o++ = *where++;
+    *o++ = ' ';
+    while (*text && o < line + 240) *o++ = *text++;
+    *o = 0;
+    put(line);
+    emit("e", 0, line);
+}
+
+static void pipe_line(const char *text)
+{
+    DWORD written = 0;
+    if (g.pipe == INVALID_HANDLE_VALUE || !text) return;
+    WriteFile(g.pipe, text, lstrlenA(text), &written, 0);
+}
+
 static void emit(const char *kind, unsigned int id, const char *text)
 {
     bus_header *h = (bus_header *)g.bus;
@@ -144,21 +169,9 @@ static void emit(const char *kind, unsigned int id, const char *text)
     *(unsigned int *)(slot + 8) = len;
     for (unsigned int i = 0; i < len; i++) slot[12 + i] = text[i];
     h->outHead = h->outHead + 1;
+
 }
 
-static void fail(const char *where, const char *text)
-{
-    char line[256];
-    char *o = line;
-    const char *a = "fail ";
-    while (*a) *o++ = *a++;
-    while (*where) *o++ = *where++;
-    *o++ = ' ';
-    while (*text && o < line + 240) *o++ = *text++;
-    *o = 0;
-    put(line);
-    emit("e", 0, line);
-}
 
 /* ------------------------------------------------------------------ scanning */
 /* A pattern is a byte string with 0xCC as the wildcard. First exact hit wins. */
@@ -963,26 +976,196 @@ static const char *find_text(const char *haystack, const char *needle)
     return 0;
 }
 
+/* pull "code":"..." out of a line, unescaping as we go */
+static unsigned int json_string(const char *line, const char *key, char *out, unsigned int size)
+{
+    const char *at = find_text(line, key);
+    unsigned int length = 0;
+    if (!at) return 0;
+    at += lstrlenA(key);
+    while (*at && *at != '"' && length + 1 < size) out[length++] = *at++;
+    out[length] = 0;
+    return length;
+}
+
+static unsigned int json_number(const char *line, const char *key)
+{
+    const char *at = find_text(line, key);
+    unsigned int value = 0;
+    if (!at) return 0;
+    at += lstrlenA(key);
+    while (*at >= '0' && *at <= '9') value = value * 10 + (unsigned int)(*at++ - '0');
+    return value;
+}
+
+/* queue one command for the runner; a full ring drops it and says so */
+static void push_command(unsigned int op, unsigned int id, const char *payload)
+{
+    bus_header *h = (bus_header *)g.bus;
+    char *slot;
+    unsigned int length = payload ? (unsigned int)lstrlenA(payload) : 0;
+    if (!h || h->cmdHead - h->cmdTail >= CMD_SLOTS) {
+        emit("e", id, "command ring full");
+        return;
+    }
+    if (length > CMD_SIZE - 20) length = CMD_SIZE - 20;
+    slot = (char *)g.bus + CMD_BASE + (h->cmdHead % CMD_SLOTS) * CMD_SIZE;
+    *(unsigned int *)(slot + 0) = op;
+    *(unsigned int *)(slot + 4) = id;
+    *(unsigned int *)(slot + 8) = length;
+    for (unsigned int i = 0; i < length; i++) slot[12 + i] = payload[i];
+    h->cmdHead = h->cmdHead + 1;
+}
+
+/* server side: the gui is the client and connects by pid. The connect borrows the hijacked
+   thread for a moment at most; afterwards everything runs off the pipe and Heartbeat. */
+static int open_pipe(void)
+{
+    char name[64];
+    wsprintfA(name, "\\\\.\\pipe\\umbra-%u", GetCurrentProcessId());
+    g.pipe = CreateNamedPipeA(name, PIPE_ACCESS_DUPLEX,
+                              PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT,
+                              1, 8192, 8192, 0, 0);
+    if (g.pipe == INVALID_HANDLE_VALUE) return 0;
+    /* NOWAIT: 535 means a client is already there, 536 means we are listening - both fine,
+       and either way the connection completes by itself when the gui connects */
+    if (ConnectNamedPipe(g.pipe, 0) == 0 && GetLastError() != ERROR_PIPE_CONNECTED &&
+        GetLastError() != ERROR_PIPE_LISTENING) {
+        CloseHandle(g.pipe);
+        g.pipe = INVALID_HANDLE_VALUE;
+        return 0;
+    }
+    return 1;
+}
+
+/* everything the runner and the core emit leaves through here, in one place: bus slots in,
+   pipe lines out. Numbers the runner uses map onto the gui's ops. */
+static void drain_output(void)
+{
+    bus_header *h = (bus_header *)g.bus;
+    char line[700];
+    while (h && h->outTail != h->outHead) {
+        char *slot = (char *)g.bus + OUT_BASE + (h->outTail % OUT_SLOTS) * OUT_SIZE;
+        unsigned int kind = *(unsigned int *)(slot + 0);
+        unsigned int id = *(unsigned int *)(slot + 4);
+        unsigned int length = *(unsigned int *)(slot + 8);
+        const char *op = "log";
+        const char *label = "info";
+        char *o = line;
+        const char *a;
+
+        if (length > OUT_SIZE - 16) length = OUT_SIZE - 16;
+        /* kind arrives as a character from emit() and as 1..5 from the runner */
+        if (kind < 8) {
+            if (kind == 1) label = "print";
+            else if (kind == 2) label = "warn";
+            else if (kind == 3) { label = "error"; op = "fail"; }
+            else if (kind == 5) op = "done";
+        } else if (kind == 'e') { label = "error"; op = "fail"; }
+        else if (kind == 'w') { label = "warn"; }
+
+        a = "{\"op\":\"";
+        while (*a) *o++ = *a++;
+        a = op;
+        while (*a) *o++ = *a++;
+        *o++ = '"';
+        if (kind == 5) {
+            a = ",\"id\":";
+            while (*a) *o++ = *a++;
+            char digits[12];
+            wsprintfA(digits, "%u", id);
+            a = digits;
+            while (*a) *o++ = *a++;
+            a = ",\"ms\":0}\n";
+            while (*a) *o++ = *a++;
+            *o = 0;
+            pipe_line(line);
+            h->outTail = h->outTail + 1;
+            continue;
+        }
+        a = ",\"kind\":\"";
+        while (*a) *o++ = *a++;
+        a = label;
+        while (*a) *o++ = *a++;
+        a = "\",\"script\":";
+        while (*a) *o++ = *a++;
+        char digits[12];
+        wsprintfA(digits, "%u", id);
+        a = digits;
+        while (*a) *o++ = *a++;
+        a = ",\"text\":\"";
+        while (*a) *o++ = *a++;
+        for (unsigned int i = 0; i < length && o < line + 660; i++) {
+            unsigned char c = (unsigned char)slot[12 + i];
+            if (c == '"' || c == '\\') *o++ = '\\';
+            if (c == '\n') { *o++ = '\\'; *o++ = 'n'; continue; }
+            if (c == '\r') continue;
+            *o++ = (char)c;
+        }
+        a = "\"}\n";
+        while (*a) *o++ = *a++;
+        *o = 0;
+        pipe_line(line);
+        h->outTail = h->outTail + 1;
+    }
+}
+
+/* trailing text still waiting in the read buffer, so a fragment is not half-parsed */
+static char g_carry[4096];
+static unsigned int g_carryLength;
+
+static void handle_line(const char *line)
+{
+    unsigned int id = json_number(line, "\"id\":");
+    static char code[8192];
+    unsigned int length;
+    if (find_text(line, "\"exec\"")) {
+        length = json_string(line, "\"code\":\"", code, sizeof(code));
+        if (!length) { emit("e", id, "exec with no code"); return; }
+        push_command(OP_EXEC, id ? id : ++g.nextId, code);
+    } else if (find_text(line, "\"cancel\"")) {
+        push_command(OP_CANCEL, id, "");
+    } else if (find_text(line, "\"hello\"")) {
+        char hello[160];
+        wsprintfA(hello, "{\"op\":\"ready\",\"pid\":%u,\"build\":\"%s\"}\n",
+                  GetCurrentProcessId(), UMBRA_CLIENT_VERSION);
+        pipe_line(hello);
+    } else if (find_text(line, "\"bye\"")) {
+        push_command(OP_SHUTDOWN, 0, "");
+    }
+}
+
 static void serve(void)
 {
-    /* GUI <-> core. One line in, one line out, never blocks the client's own loop
-       for more than a pipe read timeout. */
-    char line[4096];
+    /* GUI <-> core: one JSON object per line. Never blocks the client: the pipe is NOWAIT and
+       an idle pass only sleeps. */
+    char chunk[4096];
     DWORD read = 0;
+
     while (g.pipe != INVALID_HANDLE_VALUE) {
-        if (!ReadFile(g.pipe, line, sizeof(line) - 1, &read, 0)) break;
-        line[read] = 0;
-        if (read == 0) break;
-        if (line[0] == '{') {
-            if (find_text(line, "\"exec\"")) {
-                /* the GUI already queued it in the bus in the shipped build; this is the
-                   debug path where the core pushes the command itself */
-                emit("i", 0, "exec accepted");
-            } else if (find_text(line, "\"hello\"")) {
-                emit("i", 0, "hello accepted");
+        if (ReadFile(g.pipe, chunk, sizeof(chunk) - 1, &read, 0) && read > 0) {
+            chunk[read] = 0;
+            for (DWORD i = 0; i < read; i++) {
+                char c = chunk[i];
+                if (c == '\n' || c == 0) {
+                    g_carry[g_carryLength] = 0;
+                    if (g_carryLength > 1) handle_line(g_carry);
+                    g_carryLength = 0;
+                } else if (g_carryLength + 1 < sizeof(g_carry)) {
+                    g_carry[g_carryLength++] = c;
+                }
             }
+        } else if (GetLastError() == ERROR_BROKEN_PIPE) {
+            break;
+        } else {
+            /* idle: the runner fills the bus, we only forward it, so a short sleep costs
+               nothing on the client's frame budget */
+            Sleep(12);
         }
+        drain_output();
+        /* nothing else to do with the bus: the runner drains it and emits straight out */
     }
+    DisconnectNamedPipe(g.pipe);
     CloseHandle(g.pipe);
     g.pipe = INVALID_HANDLE_VALUE;
 }
@@ -1027,9 +1210,7 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
     }
 
     stage("pipe");
-    wsprintfA(name, "\\\\.\\pipe\\umbra-%u", GetCurrentProcessId());
-    g.pipe = CreateFileA(name, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
-    if (g.pipe == INVALID_HANDLE_VALUE) emit("e", 0, "pipe: no host listening");
+    if (!open_pipe()) emit("e", 0, "pipe: no gui could connect");
 
     stage("scan");
     if (!resolve()) {

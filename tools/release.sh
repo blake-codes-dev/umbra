@@ -32,6 +32,20 @@ if [ -n "$newest" ]; then
      "$proj/bin/Release/net9.0-windows/win-x64/" 2>/dev/null || true
 fi
 
+# native payload: normally built by src/native/build.bat (MSVC, real SEH). Fall back to mingw
+# here so the artifact is never shipped without a core, and say so when it is degraded.
+mkdir -p src/app/Umbra/native
+if [ -f src/native/core.c ]; then
+  if command -v x86_64-w64-mingw32-gcc >/dev/null; then
+    x86_64-w64-mingw32-gcc -shared -O2 -mno-stack-arg-probe src/native/core.c \
+      -o src/app/Umbra/native/core.dll -lwinhttp -luser32 || {
+        echo "core.dll build failed"; exit 1; }
+    echo "core.dll built with mingw (SEH guards are MSVC-only; build.bat on Windows is the real one)"
+  else
+    echo "no mingw and no core.dll: the app will refuse to inject"
+  fi
+fi
+
 rm -rf dist/protected
 obfuscar.console -v:q obfuscar.xml
 cp dist/protected/Umbra.dll "$proj/bin/Release/net9.0-windows/win-x64/Umbra.dll"

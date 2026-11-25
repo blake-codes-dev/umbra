@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Umbra")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("0.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+2e2ed89874fecc5c67a6618e8f16329116c0b1fa")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+abaa95b959620c1315cf2df15edff28f4fde43d4")]
 [assembly: System.Reflection.AssemblyProductAttribute("Umbra")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Umbra")]
 [assembly: System.Reflection.AssemblyVersionAttribute("0.1.0.0")]

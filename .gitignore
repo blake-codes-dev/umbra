@@ -11,3 +11,4 @@ state/*.pid
 *.obj
 src/native/*.map
 tools/llama/
+src/app/Umbra/native/*.dll

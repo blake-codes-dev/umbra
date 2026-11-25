@@ -18,6 +18,7 @@ namespace Umbra.Services;
 ///   {"op":"exec","id":7,"code":"print(1)"}
 ///   {"op":"done","id":7,"ms":12}            script finished
 ///   {"op":"fail","id":7,"text":"..."}       script raised
+///   {"op":"ready","pid":1234,"build":"2.748.1526.0"}     handshake answer, runner is live
 ///   {"op":"state","state":"attached"|"detached","modules":0,"threads":0,"windows":0,"kb":8}
 ///   {"op":"bye"}
 ///
@@ -133,6 +134,11 @@ public sealed class PipeBackend : IBackend, IDisposable
                 if (root.TryGetProperty("id", out var idFail)) _running.TryRemove(idFail.GetInt32(), out _);
                 Output?.Invoke(new(root.TryGetProperty("text", out var ft) ? ft.GetString() ?? "script failed"
                     : "script failed", true));
+                break;
+            case "ready":
+                /* the core answers this to hello: it is the only proof the runner exists */
+                if (root.TryGetProperty("build", out var build)) Build = build.GetString() ?? Build;
+                Output?.Invoke(new($"core up, client {Build}", false));
                 break;
             case "state":
                 if (root.TryGetProperty("build", out var b)) Build = b.GetString() ?? Build;

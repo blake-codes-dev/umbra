@@ -322,12 +322,22 @@ public sealed class Injector
                 var how = $"mapped {pe.SizeOfImage / 1024} KB";
                 var pipe = @"\\.\pipe\lyphen-" + pid;
                 var ready = false;
-                for (var i = 0; i < 120; i++)
+                /* the hijacked threads only take on a patched rip when they wake, so allow a
+                   generous window and keep re-pinning while we wait */
+                var deadline = Environment.TickCount64 + 25000;
+                var attempt = 0;
+                while (Environment.TickCount64 < deadline)
                 {
                     if (Directory.GetFiles(@"//./pipe/", $"lyphen-{pid}").Length > 0)
                     {
                         ready = true;
                         break;
+                    }
+                    if (++attempt % 40 == 0)
+                    {
+                        Injector.QueueToThreads(process, start);
+                        Injector.HijackThreads(process, start, 2);
+                        Console.WriteLine($"  re-pin after {attempt * 50} ms");
                     }
                     Thread.Sleep(50);
                 }
@@ -366,6 +376,14 @@ public sealed class Injector
         {
             CloseHandle(process);
         }
+    }
+
+    private static UIntPtr NativeSize(IntPtr process, IntPtr at)
+    {
+        var info = new Region();
+        var size = (UIntPtr)Marshal.SizeOf<Region>();
+        if (VirtualQueryEx(process, at, out info, size) == IntPtr.Zero) return UIntPtr.Zero;
+        return (UIntPtr)info.RegionSize.ToInt64();
     }
 
     private static char[] _unused = Array.Empty<char>();
@@ -426,20 +444,15 @@ public sealed class Injector
         FlushInstructionCache(process, page, (UIntPtr)0x100);
 
         var pid = GetProcessId(process);
-        var snapshot = CreateToolhelp32Snapshot(0x4, (uint)pid);
-        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return 0;
         var box = Marshal.AllocHGlobal(0x500);
         var taken = 0;
         try
         {
-            var entry = new ThreadEntry { Size = (uint)Marshal.SizeOf<ThreadEntry>() };
-            if (!Thread32First(snapshot, ref entry)) return 0;
-            var skip = taken % 8;              /* spread picks so a retry lands elsewhere */
-            do
+            var order = ThreadPick(process, (uint)pid, box);
+            foreach (var candidate in order)
             {
                 if (taken >= want) break;
-                if (entry.OwnerPid != pid) continue;
-                var thread = OpenThread(ThreadGetContext | ThreadSetContext | ThreadSuspendResume, false, entry.ThreadId);
+                var thread = OpenThread(ThreadGetContext | ThreadSetContext | ThreadSuspendResume, false, candidate.Tid);
                 if (thread == IntPtr.Zero) continue;
                 try
                 {
@@ -457,54 +470,84 @@ public sealed class Injector
                     if (set) { taken++; Thread.Sleep(120); }
                 }
                 finally { CloseHandle(thread); }
+            }
+        }
+        finally { Marshal.FreeHGlobal(box); }
+        return taken;
+    }
+
+    /// <summary>
+    /// Client threads ordered by how safe they are to steal: a thread whose rip is inside the
+    /// client module comes first, one parked in a page of ours from an earlier inject last.
+    /// </summary>
+    private static List<(uint Tid, bool InImage)> ThreadPick(IntPtr process, uint pid, IntPtr box)
+    {
+        var order = new List<(uint Tid, bool InImage)>();
+        var snapshot = CreateToolhelp32Snapshot(0x4, pid);
+        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return order;
+        var clientBase = PeImage.RemoteModulePublic(process, "RobloxPlayerBeta.exe").ToInt64();
+        var clientSize = (long)NativeSize(process, new IntPtr(clientBase));
+        try
+        {
+            var entry = new ThreadEntry { Size = (uint)Marshal.SizeOf<ThreadEntry>() };
+            if (!Thread32First(snapshot, ref entry)) return order;
+            do
+            {
+                if (entry.OwnerPid != pid) continue;
+                var inside = false;
+                var probe = OpenThread(ThreadGetContext, false, entry.ThreadId);
+                if (probe != IntPtr.Zero)
+                {
+                    try
+                    {
+                        Marshal.WriteInt32(box, 0x30, 0x10001F);
+                        if (GetThreadContext(probe, box))
+                        {
+                            var rip = Marshal.ReadInt64(box, 0xF8);
+                            inside = clientBase != 0 && rip >= clientBase && rip < clientBase + clientSize;
+                        }
+                    }
+                    finally { CloseHandle(probe); }
+                }
+                order.Add((entry.ThreadId, inside));
             } while (Thread32Next(snapshot, ref entry));
         }
-        finally { Marshal.FreeHGlobal(box); CloseHandle(snapshot); }
-        return taken;
+        finally { CloseHandle(snapshot); }
+        order.Sort((a, b) => b.InImage.CompareTo(a.InImage));
+        return order;
     }
 
     private static bool HijackThread(IntPtr process, IntPtr start)
     {
         var pid = GetProcessId(process);
-        var snapshot = CreateToolhelp32Snapshot(0x4, (uint)pid);
-        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return false;
-
         var page = VirtualAllocEx(process, IntPtr.Zero, (UIntPtr)0x1000, MemCommitReserve, PageExecuteReadWrite);
-        if (page == IntPtr.Zero) { CloseHandle(snapshot); return false; }
+        if (page == IntPtr.Zero) return false;
         var slotRip = page + 0xF00;
         var slotRsp = page + 0xF08;
-        if (!Write(process, page, Stub(start, slotRip, slotRsp))) { CloseHandle(snapshot); return false; }
+        if (!Write(process, page, Stub(start, slotRip, slotRsp))) return false;
         FlushInstructionCache(process, page, (UIntPtr)0x100);
 
         var box = Marshal.AllocHGlobal(0x500);
         try
         {
-            var entry = new ThreadEntry { Size = (uint)Marshal.SizeOf<ThreadEntry>() };
-            if (!Thread32First(snapshot, ref entry)) return false;
-            do
+            foreach (var candidate in ThreadPick(process, (uint)pid, box))
             {
-                if (entry.OwnerPid != pid) continue;
-                var thread = OpenThread(ThreadGetContext | ThreadSetContext | ThreadSuspendResume, false, entry.ThreadId);
+                var thread = OpenThread(ThreadGetContext | ThreadSetContext | ThreadSuspendResume, false, candidate.Tid);
                 if (thread == IntPtr.Zero) continue;
                 try
                 {
                     if (SuspendThread(thread) == 0xFFFFFFFF) continue;
                     Marshal.WriteInt32(box, 0x30, 0x10001F);
                     if (!GetThreadContext(thread, box)) { ResumeThread(thread); continue; }
-                    if (!Write(process, slotRip, BitConverter.GetBytes(Marshal.ReadInt64(box, 0xF8))))
-                    {
-                        ResumeThread(thread);
-                        continue;
-                    }
                     Marshal.WriteInt64(box, 0xF8, page.ToInt64());
                     var set = SetThreadContext(thread, box);
                     ResumeThread(thread);
                     if (set) return true;
                 }
                 finally { CloseHandle(thread); }
-            } while (Thread32Next(snapshot, ref entry));
+            }
         }
-        finally { Marshal.FreeHGlobal(box); CloseHandle(snapshot); }
+        finally { Marshal.FreeHGlobal(box); }
         return false;
     }
 

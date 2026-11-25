@@ -4,14 +4,15 @@
   "iso": "2026-11-25T07:19:50Z",
   "note": "loop installed for both sides",
   "state": "working",
-  "alerted": false,
+  "alerted": true,
   "beats": 5
  },
  "windows": {
-  "at": 1795590069.8722057,
-  "iso": "2026-11-25T07:01:09Z",
-  "note": "\"eight anchors pinned and committed\"",
+  "at": 1795592424.9045389,
+  "iso": "2026-11-25T07:40:24Z",
+  "note": "\"text readability probe built\"",
+  "state": "working",
   "alerted": true,
-  "beats": 3
+  "beats": 4
  }
 }

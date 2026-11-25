@@ -55,8 +55,15 @@ public partial class MainWindow : Window
             Loaded += async (_, _) =>
             {
                 PidBox.Text = pid;
+                /* a scripted attach has to prove the payload answered, so use the real pipe
+                   backend instead of whatever the saved setting says */
+                OptMock.IsChecked = false;
+                SwapBackend();
                 await Task.Delay(400);
-                await _backend.AttachAsync(pid);
+                /* --attach used to only wake the backend, so with the mock backend selected
+                   nothing was ever mapped. Go through the real attach path instead. */
+                Attach_Click(this, new RoutedEventArgs());
+                for (var i = 0; i < 200 && InjectState.Attaching == _backend.State; i++) await Task.Delay(100);
                 if (runAt >= 0 && runAt + 1 < argv.Length && _backend.State == InjectState.Attached)
                 {
                     Editor.Text = argv[runAt + 1];

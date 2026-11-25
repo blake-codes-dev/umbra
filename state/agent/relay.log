@@ -65,3 +65,11 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T07:19:52Z  -> #relay: 24/7: three layers, in order of preference.
 2026-11-25T07:19:56Z  . mr bot: our echo
 2026-11-25T07:19:56Z  . mr bot: our echo
+2026-11-25T07:39:00Z  gateway error: no close frame received or sent
+2026-11-25T07:39:04Z  gateway ready as mr bot
+2026-11-25T07:55:40Z  ! [container] windows has been silent 15 min (last note: min "text readability probe built"). If it died mid-ste
+2026-11-25T07:55:44Z  . mr bot: our echo
+2026-11-25T07:55:45Z  -> #relay: [container] windows has been silent 15 min (last note: min "text readability probe built")
+2026-11-25T07:55:48Z  . mr bot: our echo
+2026-11-25T08:01:38Z  gateway error: no close frame received or sent
+2026-11-25T08:01:44Z  gateway ready as mr bot

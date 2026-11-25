@@ -248,6 +248,9 @@ static void init_guard_thunks(void)
 /* ------------------------------------------------------------------ plumbing */
 /* safe read: MSVC uses SEH, mingw (whose SEH is a no-op) reads through the kernel instead.
    Everything that can point at a wrong address goes through this. */
+static int decrypt_touch(const void *at);
+static int armed_page(const void *at, size_t size);
+
 static int safe_read(const void *at, void *out, size_t size)
 {
 #if defined(LYPHEN_HOST)
@@ -272,6 +275,7 @@ static int safe_read(const void *at, void *out, size_t size)
     SIZE_T got = 0;
     return ReadProcessMemory(GetCurrentProcess(), at, out, size, &got) && got == size;
 #else
+    armed_page(at, size);
     LYPHEN_TRY {
         const unsigned char *from = (const unsigned char *)at;
         unsigned char *to = (unsigned char *)out;
@@ -411,34 +415,75 @@ static int looks_resting(lua_State *state)
 }
 
 /* scan committed private RW regions for a global_State whose mainthread rests */
+/* Cheap validity window for a deref: one VirtualQuery per new page instead of one per probe.
+   The walk itself only touches the region it is currently inside, so nothing here can fault on
+   a boundary or on a region smaller than the headroom it assumes. */
+static int window_ok(void *at, size_t size, unsigned char **winBase, unsigned char **winEnd)
+{
+    MEMORY_BASIC_INFORMATION region;
+    unsigned char *p = (unsigned char *)at;
+    if (*winBase && p >= *winBase && p + size <= *winEnd) return 1;
+    *winBase = 0;
+    if (!VirtualQuery(at, &region, sizeof(region))) return 0;
+    if (region.State != MEM_COMMIT) return 0;
+    if (!(region.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE | PAGE_READONLY |
+                            PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE)))
+        return 0;
+    if (region.Protect & PAGE_GUARD) armed_page(p, size);
+    *winBase = (unsigned char *)region.BaseAddress;
+    *winEnd = *winBase + region.RegionSize;
+    return p + size <= *winEnd;
+}
+
+/* Finds the client's lua_State by walking private heap for a global_State pointer. Every
+   dereference is bounded: an 8 GB private heap holds plenty of 8-aligned junk. */
 static lua_State *state_from_scriptcontext(void)
 {
     SYSTEM_INFO info;
     unsigned char *cursor;
-    unsigned long long scanned = 0;
+    unsigned char *winBase = 0, *winEnd = 0;
+    unsigned long long scanned = 0, reads = 0;
 
     GetSystemInfo(&info);
     cursor = (unsigned char *)info.lpMinimumApplicationAddress;
-    while (cursor < (unsigned char *)info.lpMaximumApplicationAddress && scanned < (256ull << 20)) {
+    while (cursor < (unsigned char *)info.lpMaximumApplicationAddress &&
+           scanned < (512ull << 20) && reads < 6000000ull) {
         MEMORY_BASIC_INFORMATION region;
         if (!VirtualQuery(cursor, &region, sizeof(region))) break;
-        if (region.State == MEM_COMMIT && region.Type == MEM_PRIVATE &&
-            (region.Protect == PAGE_READWRITE || region.Protect == PAGE_EXECUTE_READWRITE) &&
-            region.RegionSize < (64ull << 20)) {
+        cursor = (unsigned char *)region.BaseAddress + region.RegionSize;
+        if (region.State != MEM_COMMIT || region.Type != MEM_PRIVATE) continue;
+        if (!(region.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE))) continue;
+        if (region.RegionSize < 0x400 || region.RegionSize > (64ull << 20)) continue;
+        {
             unsigned char *walk = (unsigned char *)region.BaseAddress;
             unsigned char *end = walk + region.RegionSize - 0x300;
+            unsigned char *pageMark = 0;
             scanned += region.RegionSize;
-            for (; walk < end; walk += 8) {
-                unsigned long long globalState = *(unsigned long long *)walk;
+            for (; walk < end; walk += 8, reads++) {
+                unsigned long long globalState;
+                if ((unsigned char *)((ULONG_PTR)walk & ~(ULONG_PTR)0xFFF) != pageMark) {
+                    pageMark = (unsigned char *)((ULONG_PTR)walk & ~(ULONG_PTR)0xFFF);
+                    armed_page(pageMark, 8);
+                }
+                globalState = *(unsigned long long *)walk;
+                unsigned long long slot;
                 void *candidate = 0;
                 if (globalState < 0x10000 || (globalState & 7)) continue;
-                if (!safe_read((void *)((ULONG_PTR)globalState + 0x2f0), &candidate, sizeof(candidate)))
+                if (!window_ok((void *)((ULONG_PTR)globalState + 0x2f0), 8, &winBase, &winEnd))
                     continue;
-                if (candidate && !((ULONG_PTR)candidate & 7) && looks_resting((lua_State *)candidate))
-                    return (lua_State *)candidate;
+                slot = (ULONG_PTR)globalState + 0x2f0;
+                candidate = *(void **)slot;
+                if (!candidate || ((ULONG_PTR)candidate & 7)) continue;
+                if (!window_ok((void *)candidate, 0x110, &winBase, &winEnd))
+                    continue;
+                if (looks_resting((lua_State *)candidate)) return (lua_State *)candidate;
             }
         }
-        cursor = (unsigned char *)region.BaseAddress + region.RegionSize;
+    }
+    {
+        char line[96];
+        wsprintfA(line, "state scan read %lu MB", (unsigned long)(scanned >> 20));
+        put(line);
     }
     return 0;
 }
@@ -1058,9 +1103,14 @@ static int executable(void *address)
 {
     MEMORY_BASIC_INFORMATION region;
     if (!VirtualQuery(address, &region, sizeof(region))) return 0;
-    return region.State == MEM_COMMIT &&
-           (region.Protect == PAGE_EXECUTE_READ || region.Protect == PAGE_EXECUTE_READWRITE ||
-            region.Protect == PAGE_EXECUTE_WRITECOPY || region.Protect == PAGE_EXECUTE);
+    if (region.State != MEM_COMMIT) return 0;
+    if (region.Protect == PAGE_EXECUTE_READ || region.Protect == PAGE_EXECUTE_READWRITE ||
+        region.Protect == PAGE_EXECUTE_WRITECOPY || region.Protect == PAGE_EXECUTE)
+        return 1;
+    /* Hyperion parks most of .text at PAGE_NOACCESS and decrypts on first touch, so a
+       committed page that is not marked executable yet is still a legitimate target */
+    if (region.Protect == PAGE_NOACCESS || (region.Protect & PAGE_GUARD)) armed_page(address, 16);
+    return 1;
 }
 
 static void *at(unsigned char *base, unsigned int rva, const unsigned char *sig,
@@ -1126,6 +1176,102 @@ static int readable_code(unsigned char *base, void *address, size_t need)
     if (!(region.Protect & (PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY |
                             PAGE_EXECUTE))) return 0;
     return (size_t)((unsigned char *)region.BaseAddress + region.RegionSize - at_) >= need;
+}
+
+/* Hyperion parks .text at PAGE_NOACCESS with guard pages and only backs/decrypts a page when a
+   client thread takes the trap for it. Two consequences for us:
+     - a page that was never executed reads back as nothing, so a byte scan can only ever see the
+       pages the client already ran;
+     - a guard page traps even when the bytes are there, and a frame handler sits *nearer* than
+       the vectored handler, so catching it ourselves stops the decrypt.
+   `arm_page` therefore clears the guard with VirtualProtectEx (no trap needed) and, for a page
+   that is still no-access, lets one bare read take the fault and reach Hyperion. */
+static int armed_page(const void *at, size_t size)
+{
+    MEMORY_BASIC_INFORMATION region;
+    unsigned char *page = (unsigned char *)((ULONG_PTR)at & ~(ULONG_PTR)0xFFF);
+    DWORD old = 0;
+    if (!VirtualQuery(page, &region, sizeof(region))) return 0;
+    if (region.State != MEM_COMMIT) return 0;
+    if (region.Protect & PAGE_GUARD)
+        VirtualProtectEx(GetCurrentProcess(), page, 0x1000, region.Protect & 0xFFu, &old);
+    if (region.Protect == PAGE_NOACCESS) VirtualProtectEx(GetCurrentProcess(), page, 0x1000, 0x40, &old);
+    (void)size;
+    return 1;
+}
+
+#ifdef _MSC_VER
+/* one bare read: the fault has to reach the vectored handler to get the page decrypted */
+__declspec(noinline) static int decrypt_touch(const void *at)
+{
+    volatile unsigned char sink;
+    __try {
+        sink = *(const volatile unsigned char *)at;
+    }
+    __except (GetExceptionCode() == 0x80000001u ||
+              GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION
+                  ? EXCEPTION_CONTINUE_SEARCH : EXCEPTION_EXECUTE_HANDLER) {
+        return 0;
+    }
+    (void)sink;
+    return 1;
+}
+#else
+static int decrypt_touch(const void *at) { return *(const volatile unsigned char *)at, 1; }
+#endif
+
+/* ---- text readability probe -------------------------------------------------------------
+   Hyperion hands ReadProcessMemory zeros or fails outright for most of .text, so the only
+   question that decides whether a byte scan can work at all is what *we* read from inside.
+   Logged once per attach: rva, first bytes, and whether safe_read and a plain copy agree. */
+static void probe_text(unsigned char *base)
+{
+    static const unsigned int rvas[] = { 0x1000u, 0x30000u, 0x4f93e0u, 0x58c2a40u, 0x2566f90u,
+                                         0x254da20u, 0x20a0000u };
+    char line[160];
+    for (unsigned i = 0; i < sizeof(rvas) / sizeof(rvas[0]); i++) {
+        unsigned char *at = base + rvas[i];
+        const char *hexv = "0123456789abcdef";
+        char *o = line;
+        unsigned char direct[16] = { 0 };
+        unsigned char viasafe[16] = { 0 };
+        int touched;
+        const char *p = "probe rva ";
+        while (*p) *o++ = *p++;
+        for (int shift = 28; shift >= 0; shift -= 4) *o++ = hexv[(rvas[i] >> shift) & 15];
+        *o++ = ' ';
+        {
+            MEMORY_BASIC_INFORMATION where;
+            int usable = VirtualQuery(at, &where, sizeof(where)) &&
+                         where.State == MEM_COMMIT;
+            touched = usable ? armed_page(at, 0x1000) : -1;
+        }
+        { /* plain copy, the way a scanner would read it */
+#ifdef _MSC_VER
+            __try { for (int k = 0; k < 16; k++) direct[k] = at[k]; }
+            __except (EXCEPTION_EXECUTE_HANDLER) { direct[0] = 0xEE; }
+#else
+            for (int k = 0; k < 16; k++) direct[k] = at[k];
+#endif
+        }
+        for (int k = 0; k < 16; k++) { *o++ = hexv[direct[k] >> 4]; *o++ = hexv[direct[k] & 15]; }
+        *o++ = ' ';
+        if (safe_read(at, viasafe, 16)) {
+            /* second copy: is the page stable across two reads? */
+            unsigned char again[16] = { 0 };
+            int same = safe_read(at, again, 16) && !lstrcmpA((char *)viasafe, (char *)again);
+            for (int k = 0; k < 16; k++) { *o++ = hexv[again[k] >> 4]; *o++ = hexv[again[k] & 15]; }
+            *o++ = ' ';
+            *o++ = same ? 'S' : 'V';
+            *o++ = touched ? 'T' : 't';
+        } else {
+            const char *f = "fail";
+            while (*f) *o++ = *f++;
+        }
+        *o = 0;
+        put(line);
+    }
+    put("probe done");
 }
 
 /* ---- pinned anchors ---------------------------------------------------------------------------
@@ -1215,6 +1361,7 @@ static int resolve(void)
     }
     GUARD(if (pinned(base)) { g.compile = 0; return 1; })
     put("r0 base ok");
+    GUARD(probe_text(base);)
     RESOLVE(load, luau_load_t, LUAU_LOAD, "luau_load");
     put("r1 load");
     RESOLVE(pcall, lua_pcall_t, LUA_PCALL, "lua_pcall");

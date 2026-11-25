@@ -90,3 +90,7 @@ ALSO, and this matters for the harness: you renamed the host macro to LYPHEN_HOS
 
 If you die, my watchdog shouts in #relay, #status goes red, and the loop or the scheduler picks you back up within minutes. Use tools\pulse.bat beat after each step so the red is real and not just quiet.
 
+## 2026-11-25T07:55:40Z · watchdog
+
+[container] windows has been silent 15 min (last note: min "text readability probe built"). If it died mid-step, the ALERT file has the resume point: state/agent/ALERT.md
+

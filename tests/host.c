@@ -21,7 +21,8 @@ typedef struct { void *BaseAddress; void *AllocBase; unsigned AllocProtect; unsi
 #include "../src/native/core.c"
 
 static lua_State *L;
-static int g_heartbeat = 0;      /* registry ref of the RunService.Heartbeat handler */
+static int g_heartbeat = 0;
+static int g_calibrate_only = 0;      /* registry ref of the RunService.Heartbeat handler */
 static int g_failures;
 static HANDLE g_busFile;
 
@@ -167,6 +168,7 @@ int dbg_handler(lua_State *state)
 
 static int signal_connect(lua_State *state)
 {
+
     lua_pushvalue(state, 2);
     g_heartbeat = lua_ref(state, -1);
     return 0;
@@ -349,9 +351,9 @@ static int tween_create(lua_State *state)
 static void push_signal(lua_State *state)
 {
     lua_createtable(state, 0, 3);
-    lua_pushcclosurek(state, ui_signal_connect, "Connect", 0, 0);
+    lua_pushcclosurek(state, signal_connect, "Connect", 0, 0);
     lua_setfield(state, -2, "Connect");
-    lua_pushcclosurek(state, signal_connect, "Wait", 0, 0);
+    lua_pushcclosurek(state, ui_noop, "Wait", 0, 0);
     lua_setfield(state, -2, "Wait");
     lua_pushcclosurek(state, ui_noop, "Once", 0, 0);
     lua_setfield(state, -2, "Once");
@@ -656,7 +658,7 @@ static LONG WINAPI crash_dump(EXCEPTION_POINTERS *info)
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     setvbuf(stdout, 0, _IONBF, 0);
     /* a crash must not swallow the log */
@@ -698,6 +700,7 @@ int main(void)
     g.state = L;
     install_fakes();
     install_ui_fakes();
+    g_calibrate_only = argc > 1 && !strcmp(argv[1], "calibrate");
 
     /* resolve the API the way the core does, but from symbols: this also proves the typedefs
        match the real ABI, which is the part a wrong guess would break */
@@ -757,6 +760,7 @@ int main(void)
     CHECK(apiSource && runnerSource, "read api.luau and runner.luau");
     if (!apiSource || !runnerSource) return 1;
     g_installed = 0;                 /* the hook must install with the sources already in hand */
+    g.state = L;                     /* install_now would otherwise hunt for a ScriptContext */
     /* hand the sources straight to the core: read_chunk would go looking in %LOCALAPPDATA%, which
        is the app's job and would drag the folder name into the harness */
     extern char *g_apiSource, *g_runnerSource;
@@ -809,6 +813,23 @@ int main(void)
         FlushInstructionCache(GetCurrentProcess(), (void *)lua_pcall, 16);
     }
 
+    /* does the Heartbeat fake work at all, before any runner is involved? */
+    {
+        g_heartbeat = 0;
+        {   const char *snip = "game:GetService('RunService').Heartbeat:Connect(function() end)";
+            size_t n = 0;
+            char *bc = luau_compile(snip, strlen(snip), 0, &n);
+            if (bc && luau_load(L, "@hb", bc, n, 0) == 0) {
+                int st = lua_pcall(L, 0, 0, 0);
+                printf("  [dbg] snippet st=%d hb=%d %s\n", st, g_heartbeat,
+                       st ? lua_tolstring(L, -1, 0) : "");
+            } else printf("  [dbg] snippet failed\n");
+            free(bc); }
+        CHECK(g_heartbeat != 0, "the Heartbeat fake reaches signal_connect");
+        lua_settop(L, 0);
+        g_heartbeat = 0;
+    }
+
     /* the shipped trigger: gettop, with the thunk live, must hand the install to this thread */
     {
         unsigned char keepTop[16];
@@ -851,9 +872,8 @@ int main(void)
                  "assert(chunk)\n"
                  "local ok, err = xpcall(chunk, function(e) return e .. '\\n' .. debug.traceback('', 2) end, bridge, bus)\n"
                  "if not ok then error(err, 0) end\n", runnerSource);
-        printf("  [dbg] spawn api=%p chunk=%p len=%zu state=%p\n", (void *)apiSource,
-               (void *)wrapped, strlen(wrapped), (void *)L);
-        spawn_runner(L, apiSource, wrapped);
+        /* the hook test above may already have installed one: a second would double the pump */
+        if (!g_heartbeat) spawn_runner(L, apiSource, wrapped);
     }
     pump_output(transcript, sizeof(transcript), 0);
     printf("  runner said: %s", transcript);
@@ -933,6 +953,7 @@ int main(void)
                 for (int k = 0; k < c; k++)
                     printf("  [dbg] call %d -> %p writes_top=%d\n", k, calls[k], writes_top(calls[k]));
             }
+            if (g_calibrate_only) { printf("  [dbg] starting calibration\n"); }
             int ok = calibrate(base);
             printf("  [dbg] picked load=%p call=%p (fakes %p %p)\n",
                    (void *)g.load, (void *)g.pcall, (void *)fake_push_top, (void *)fake_call_api);
@@ -946,6 +967,7 @@ int main(void)
                 g.pcall = (lua_pcall_t)lua_pcall;   /* keep a working call for this check */
                 CHECK(g.load == (void *)fake_push_top || 1, "load pick is callable");
                 (void)out;
+                if (g_calibrate_only) { printf("  [dbg] calibration only, stopping here\n"); return g_failures ? 1 : 0; }
             }
         }
     }

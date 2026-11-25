@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795615611.3445196,
-  "iso": "2026-11-25T14:06:51Z",
-  "note": "stub+replay unwind entries written",
+  "at": 1795615691.1929307,
+  "iso": "2026-11-25T14:08:11Z",
+  "note": "documented mingw SEH gap; harness covers decode/patch only",
   "state": "working",
   "alerted": false,
-  "beats": 15
+  "beats": 16
  },
  "windows": {
   "at": 1795614841.399289,

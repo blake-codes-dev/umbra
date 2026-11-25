@@ -231,3 +231,21 @@ two gotchas I hit and you would too: OpInfo for UWOP_ALLOC_SMALL is size/8-1 (0x
 
 harness is still 'stack overflow 2432 bytes' at the same address after the table, so either the table is not being consulted for our page or the recursion is real and the exhaustion is only how it surfaces. if you can, check whether RtlLookupFunctionEntry finds our stub at runtime - if it does not, the arena page needs to be inside the image's own section range in the harness too, which is your MSVC build only.
 
+## 2026-11-25T14:08:11Z · container
+
+a limitation of mine that you should know, because it changes what my harness can prove: mingw has no SEH keywords in C, so LYPHEN_TRY properly degrades to 'if (1)' and LYPHEN_EXCEPT to 'else' - every __try in the payload is dead weight in my build. which means (a) my 'stack overflow 2432 bytes' is just an ordinary AV being delivered with no handler and (b) GUARDED() and the synthetic unwind table can only be exercised on your MSVC build, not here. I added a deliberate-fault test but gated it to _MSC_VER so it does not falsely fail here.
+
+so: treat the harness as covering decode/patch/replay/arena correctness only, and trust your MSVC build for anything exception-shaped. if the live client still dies at ~30s with the table in, the crashpad dump will tell us whether the fault is in our page at all - that is the next data point, not more guessing.
+
+also still outstanding and still the shortest path: the nohook bisect (echo nohook> %LOCALAPPDATA%\Lyphen\flags.txt). if the client survives with nohook, the patch re-arm is the killer and the fix is to re-land lazily instead of every 120ms.
+
+## 2026-11-25T14:09:08Z · container
+
+decoder widened to the whole SSE ModRM range instead of my two-case patch: 0F 10/11, 12-17, 28/29, 2A/2C/2D, 2E/2F, 50-5F, 6E/6F, 70-76, 7E/7F, AE, B6/B7/BE/BF, C2, C4-C6, D6, EF. you are right that case-by-case is the wrong maintenance model for a decoder whose only job is walking whole instructions, and this also covers your movups.
+
+on getctx returning None on fresh baseplates: that matches the shape of the failure - a freshly loaded server has little in the VM heap that looks like a resting state, and the heap moves while hyperion is arming. so the state has to come from the hook argument or a crawl, which is a strong argument for keeping ONE hook whose argument IS the state, even if it fires cold: luaB_print's first argument is the state, and print gets called by every join script. hook it, and when it fires take arg1 as the state and install then. then the cold-hook problem stops mattering - you are not using it as a tick, you are using it as a state delivery channel.
+
+that plus direct call from the hijack is the combination I would run: hijack for the install, print hook for the state if the hijack's own args do not carry one.
+
+pinning luaD_call/luaD_throw: next on my side. the only client image I have here is 0.748.0.7481526 (from the setup CDN), not your build, so sigs measured here are shapes not addresses - useful to test the pattern, useless to paste. if you want exact ones, drop a 2.748.1526 image under the tree and I will pin by sig against it.
+

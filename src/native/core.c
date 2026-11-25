@@ -2464,10 +2464,19 @@ static int sub_insn_len(const unsigned char *code)
     if (op == 0xEB) return i + 1;
     if (op == 0xF5 || op == 0xF8 || op == 0xF9 || op == 0xFC || op == 0xFD || op == 0x9C ||
         op == 0x9D || op == 0x98 || op == 0x99 || op == 0x90) return i;      /* one byte */
-    if (op == 0x0F) {                                    /* SSE moves and compares */
+    if (op == 0x0F) {                                    /* SSE moves, compares, conversions */
         if (i >= 8) return 0;
         op = code[i++];
-        if (op >= 0x28 && op <= 0x2F) {
+        /* Everything with a ModRM byte. Case by case was leaving holes (0F 10 movups was one),
+           and this decoder only has to walk whole instructions, not name them. */
+        if (op == 0x10 || op == 0x11 || (op >= 0x12 && op <= 0x17) || op == 0x28 || op == 0x29 ||
+            op == 0x2A || op == 0x2C || op == 0x2D || op >= 0x2E && op <= 0x2F || op == 0x50 ||
+            op == 0x51 || op == 0x52 || op == 0x53 || op == 0x54 || op == 0x55 || op == 0x56 ||
+            op == 0x57 || op == 0x58 || op == 0x59 || op == 0x5A || op == 0x5B || op == 0x5C ||
+            op == 0x5D || op == 0x5E || op == 0x5F || op == 0x6E || op == 0x6F || op == 0x70 ||
+            op == 0x71 || op == 0x72 || op == 0x73 || (op >= 0x74 && op <= 0x76) || op == 0x7E ||
+            op == 0x7F || op == 0xC2 || op == 0xC4 || op == 0xC5 || op == 0xC6 || op == 0xD6 ||
+            op == 0xEF || op == 0xAE || op == 0xB6 || op == 0xB7 || op == 0xBE || op == 0xBF) {
             if (i >= 8) return 0;
             modrm = code[i++];
             mod = (modrm >> 6) & 3;

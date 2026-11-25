@@ -27,7 +27,15 @@ Installing runs Luau, and every Luau call can enter the hook again. The flag tha
 installed" has to be set *before* the first call into the VM, not after the state work, or the hook
 restarts the install from inside itself and the C stack goes.
 
-## 4. Synthetic unwind entries are relative to our own base
+## 4. Prefer installing from our own thread
+
+Installing runs Luau, and Luau grows and relocates its C stack while it does, which invalidates the
+stack slots the interrupted function is still holding. So when a `lua_State` is already known, the
+entry installs directly from the injected thread instead of from a hook. The hook is only the way to
+*get* a state when the gui left none - the `hookalways` flag forces the old order back for
+comparison.
+
+## 5. Synthetic unwind entries are relative to our own base
 
 `RtlAddFunctionTable` resolves the entries it is given against the base passed with them. The codes
 and the table live in the payload, so the base is the payload's module, never the client's. Against

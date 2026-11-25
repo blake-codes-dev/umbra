@@ -3318,14 +3318,14 @@ static DWORD run_entry(void)
         /* gettop is the trigger of choice: it is called constantly, it never throws, and it has no
            frame of its own, so replaying its prologue cannot disturb error handling. The trampoline
            page carries no unwind info, so a throwing function is the wrong place to stand in. */
-        /* stop.txt holding 'd' installs straight from the injected thread: nothing in a live
-           client calls the base library closures, so the hook trigger never fires */
-        else if (g_stopAt < 0) {
-            put("direct install");
-            install_now(0);
-        }
-        else if (flag("nohook")) {
-            emit("i", 0, "nohook flag: installing without touching text");
+        /* Prefer the direct install whenever a state is already known, even though the hook would
+           fire sooner: installing runs luau, and luau can grow and relocate the C stack, which
+           invalidates the stack slots the interrupted function is holding. Doing it from our own
+           thread touches nothing else. The hook is kept as the way to *get* a state when the gui
+           did not leave one, because installing blind is the racy path. */
+        else if (g_stopAt < 0 || flag("nohook") || (g.state && !flag("hookalways"))) {
+            if (flag("nohook")) emit("i", 0, "nohook flag: installing without touching text");
+            else put("direct install");
             install_now(0);
         }
         else if (put("m8 runner read"),

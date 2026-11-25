@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795627497.0891175,
-  "iso": "2026-11-25T17:24:57Z",
-  "note": "0.1.13-dev payload shipped (entry ordering)",
+  "at": 1795627534.2555454,
+  "iso": "2026-11-25T17:25:34Z",
+  "note": "queue cleaned; waiting on a live attach",
   "state": "working",
   "alerted": false,
-  "beats": 26
+  "beats": 27
  },
  "windows": {
   "at": 1795614841.399289,

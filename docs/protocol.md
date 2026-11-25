@@ -82,6 +82,10 @@ is almost uniform and no prologue signature exists until the client unpacks itse
 4. `luau_load` is the last such callee in `luaB_loadstring` (the first is the compiler),
    `lua_pcall` is the one in `luaB_pcall`
 
+Note the offsets in step 3 are the *client's* `lua_State`, whose `top` sits at `0x80`. The harness
+links a different Luau whose layout is unrelated (`top` at `0x8`, `base` at `0x10`), so host builds
+take those from the linked build while the client keeps the measured ones. Do not mix them.
+
 Every pick is reported as a `calibrated load=... call=...` line, so a live run converts into
 fixed RVAs in `patterns.json` and the guessing stops being load-bearing. RVAs are still tried
 first when present.

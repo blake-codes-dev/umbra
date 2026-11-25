@@ -1,0 +1,125 @@
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+
+   EnableRedirectToV8JsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.015 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.016 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 29
+
+Microsoft (R) Windows Debugger Version 10.0.26100.3916 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+CommandLine: C:\Users\blake\deepai-data-1\.deepai-code\scratch\2026-11-24-try-to-go-into-github-5017c798\umbra\dist\test\RobloxPlayerBeta.exe
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*
+Symbol search path is: srv*
+Executable search path is: 
+ModLoad: 00007ff6`05180000 00007ff6`05388000   RobloxPlayerBeta.exe
+ModLoad: 00007ffc`e2990000 00007ffc`e2bfc000   ntdll.dll
+ModLoad: 00007ffc`e1b80000 00007ffc`e1c4b000   C:\WINDOWS\System32\KERNEL32.DLL
+ModLoad: 00007ffc`e0180000 00007ffc`e0589000   C:\WINDOWS\System32\KERNELBASE.dll
+ModLoad: 00007ffc`e0f00000 00007ffc`e10de000   C:\WINDOWS\System32\USER32.dll
+ModLoad: 00007ffc`e0150000 00007ffc`e0177000   C:\WINDOWS\System32\win32u.dll
+ModLoad: 00007ffc`e1eb0000 00007ffc`e1edb000   C:\WINDOWS\System32\GDI32.dll
+ModLoad: 00007ffc`dfc90000 00007ffc`dfdb9000   C:\WINDOWS\System32\gdi32full.dll
+ModLoad: 00007ffc`e00a0000 00007ffc`e0143000   C:\WINDOWS\System32\msvcp_win.dll
+ModLoad: 00007ffc`dfb30000 00007ffc`dfc7c000   C:\WINDOWS\System32\ucrtbase.dll
+ModLoad: 00007ffc`bf420000 00007ffc`bf4bd000   C:\WINDOWS\SYSTEM32\MSVCP140.dll
+ModLoad: 00007ffc`d7fd0000 00007ffc`d80f3000   C:\WINDOWS\SYSTEM32\WINHTTP.dll
+ModLoad: 00007ffc`bf3f0000 00007ffc`bf41c000   C:\WINDOWS\SYSTEM32\VCRUNTIME140.dll
+ModLoad: 00007ffc`bfaa0000 00007ffc`bfaac000   C:\WINDOWS\SYSTEM32\VCRUNTIME140_1.dll
+ModLoad: 00007ffc`e0c10000 00007ffc`e0cb8000   C:\WINDOWS\System32\sechost.dll
+ModLoad: 00007ffc`e1100000 00007ffc`e1131000   C:\WINDOWS\System32\IMM32.DLL
+  [dbg] image base 00007FF605180000
+umbra native harness
+  [dbg] open_pipe=1 err=536
+  ok   core opens its pipe
+  ok   gui connects to the pipe
+  [dbg] baseline st=0 top=0 want=0
+  [dbg] install at=00007FF6051A7B8C displaced=9 stub=00007FF605390000 replay=00007FF605390040 rel=1999983
+  [dbg] wait-hook=1 stub=00007FF605390000 replay=00007FF605390040
+  [dbg] w-stub: e9 3b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+  [dbg] w-replay: 33 c0 c3 cc 48 89 5c 24 08 e9 47 7b e1 ff 00 00 
+  [dbg] hooked fake_wait st=0 top=1 want=0
+  [dbg] install at=00007FF605185CBD displaced=5 stub=00007FF605390100 replay=00007FF605390140 rel=2139198
+  ok   the hook does not disturb a leaf call
+  [dbg] poison returns 99 (99 means the symbol is really called)
+  [dbg] install at=00007FF605185CBD displaced=5 stub=00007FF605390100 replay=00007FF605390140 rel=2139198
+  ok   gettop hook installs
+  ok   a hooked call runs and unwinds, repeatedly
+  ok   the hook fires on the vm thread and installs there
+  ok   read api.luau and runner.luau
+(6e58.72fc): Access violation - code c0000005 (first chance)
+First chance exceptions are reported before any exception handling.
+This exception may be expected and handled.
+*** WARNING: Unable to verify checksum for RobloxPlayerBeta.exe
+RobloxPlayerBeta!field:
+00007ff6`051a7b90 009090909057    add     byte ptr [rax+57909090h],dl ds:00000287`fc249b60=??
+0:000> sxe av
+0:000> g
+(6e58.72fc): Access violation - code c0000005 (!!! second chance !!!)
+RobloxPlayerBeta!field:
+00007ff6`051a7b90 009090909057    add     byte ptr [rax+57909090h],dl ds:00000287`fc249b60=??
+0:000> .echo ---C
+---C
+0:000> u @rip-14 L12
+RobloxPlayerBeta!fake_spawn+0x74:
+00007ff6`051a7b7c cc              int     3
+00007ff6`051a7b7d cc              int     3
+00007ff6`051a7b7e cc              int     3
+00007ff6`051a7b7f cc              int     3
+00007ff6`051a7b80 cc              int     3
+00007ff6`051a7b81 cc              int     3
+00007ff6`051a7b82 cc              int     3
+00007ff6`051a7b83 cc              int     3
+00007ff6`051a7b84 cc              int     3
+00007ff6`051a7b85 cc              int     3
+00007ff6`051a7b86 cc              int     3
+00007ff6`051a7b87 cc              int     3
+00007ff6`051a7b88 cc              int     3
+00007ff6`051a7b89 cc              int     3
+00007ff6`051a7b8a cc              int     3
+00007ff6`051a7b8b cc              int     3
+RobloxPlayerBeta!fake_wait:
+00007ff6`051a7b8c e96f841e00      jmp     00007ff6`05390000
+00007ff6`051a7b91 90              nop
+0:000> kb 8
+RetAddr               : Args to Child                                                           : Call Site
+00007ff6`051a8f1f     : 00007ff6`05318760 00000287`a492dc00 0000009e`d9bdba70 00000000`00001499 : RobloxPlayerBeta!field
+00007ff6`051aa529     : 00000287`a492dc00 00000000`00000000 00000000`00000000 00000000`00001621 : RobloxPlayerBeta!push_bridge+0x37
+00007ff6`051ac72b     : 00000287`a4900000 00007ff6`05319880 00007ff6`053198b0 00000287`a4900000 : RobloxPlayerBeta!spawn_runner+0xc5
+00007ff6`052deeb8     : 00000287`a492be30 00000000`00000000 00000287`a49299f0 00000000`00000000 : RobloxPlayerBeta!main+0x93b
+(Inline Function)     : --------`-------- --------`-------- --------`-------- --------`-------- : RobloxPlayerBeta!invoke_main+0x22
+00007ffc`e1badda7     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : RobloxPlayerBeta!__scrt_common_main_seh+0x10c
+00007ffc`e2a59c5c     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : KERNEL32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+0:000> q
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

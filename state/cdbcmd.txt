@@ -1,7 +1,5 @@
-sxe av
+bp RobloxPlayerBeta!main
 g
-.echo ---C
-.exr -1
-u RobloxPlayerBeta!fake_spawn L22
-r @rip @rsp @rax @rcx
+.echo ---M
+u RobloxPlayerBeta!fake_spawn L46
 q

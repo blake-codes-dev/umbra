@@ -1,0 +1,198 @@
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+
+   EnableRedirectToV8JsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.015 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 29
+
+Microsoft (R) Windows Debugger Version 10.0.26100.3916 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+CommandLine: C:\Users\blake\deepai-data-1\.deepai-code\scratch\2026-11-24-try-to-go-into-github-5017c798\umbra\dist\test\harness.exe
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*
+Symbol search path is: srv*
+Executable search path is: 
+ModLoad: 00007ff7`d92a0000 00007ff7`d94ae000   RobloxPlayerBeta.exe
+ModLoad: 00007ffc`e2990000 00007ffc`e2bfc000   ntdll.dll
+ModLoad: 00007ffc`e1b80000 00007ffc`e1c4b000   C:\WINDOWS\System32\KERNEL32.DLL
+ModLoad: 00007ffc`e0180000 00007ffc`e0589000   C:\WINDOWS\System32\KERNELBASE.dll
+ModLoad: 00007ffc`e0f00000 00007ffc`e10de000   C:\WINDOWS\System32\USER32.dll
+ModLoad: 00007ffc`e0150000 00007ffc`e0177000   C:\WINDOWS\System32\win32u.dll
+ModLoad: 00007ffc`e1eb0000 00007ffc`e1edb000   C:\WINDOWS\System32\GDI32.dll
+ModLoad: 00007ffc`dfc90000 00007ffc`dfdb9000   C:\WINDOWS\System32\gdi32full.dll
+ModLoad: 00007ffc`e00a0000 00007ffc`e0143000   C:\WINDOWS\System32\msvcp_win.dll
+ModLoad: 00007ffc`dfb30000 00007ffc`dfc7c000   C:\WINDOWS\System32\ucrtbase.dll
+ModLoad: 00007ffc`bf420000 00007ffc`bf4bd000   C:\WINDOWS\SYSTEM32\MSVCP140.dll
+ModLoad: 00007ffc`d7fd0000 00007ffc`d80f3000   C:\WINDOWS\SYSTEM32\WINHTTP.dll
+ModLoad: 00007ffc`bfaa0000 00007ffc`bfaac000   C:\WINDOWS\SYSTEM32\VCRUNTIME140_1.dll
+ModLoad: 00007ffc`bf3f0000 00007ffc`bf41c000   C:\WINDOWS\SYSTEM32\VCRUNTIME140.dll
+ModLoad: 00007ffc`e0c10000 00007ffc`e0cb8000   C:\WINDOWS\System32\sechost.dll
+ModLoad: 00007ffc`e1100000 00007ffc`e1131000   C:\WINDOWS\System32\IMM32.DLL
+  [dbg] image base 00007FF7D92A0000
+umbra native harness
+  [dbg] open_pipe=1 err=536
+  ok   core opens its pipe
+  ok   gui connects to the pipe
+  [dbg] baseline st=0 top=0 want=0
+  [dbg] install at=00007FF7D92D2738 displaced=9 stub=00007FF7D94B0000 replay=00007FF7D94B0040 rel=1956035
+  [dbg] wait-hook=1 stub=00007FF7D94B0000 replay=00007FF7D94B0040
+  [dbg] w-stub: e9 3b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+  [dbg] w-replay: 33 c0 c3 cc 48 89 5c 24 08 e9 f3 26 e2 ff 00 00 
+  [dbg] hooked fake_wait st=0 top=1 want=0
+  [dbg] install at=00007FF7D92A5CBD displaced=5 stub=00007FF7D94B0100 replay=00007FF7D94B0140 rel=2139198
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  ok   the hook does not disturb a leaf call
+  [dbg] poison returns 99 (99 means the symbol is really called)
+  [dbg] install at=00007FF7D92A5CBD displaced=5 stub=00007FF7D94B0100 replay=00007FF7D94B0140 rel=2139198
+  ok   gettop hook installs
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  [dbg] thunk caller-rsp=00000067A46FB7A8 caller-ra=00007FF7D94B0113
+  ok   a hooked call runs and unwinds, repeatedly
+  ok   the hook fires on the vm thread and installs there
+  ok   read api.luau and runner.luau
+(3074.698c): Access violation - code c0000005 (first chance)
+First chance exceptions are reported before any exception handling.
+This exception may be expected and handled.
+*** WARNING: Unable to verify checksum for RobloxPlayerBeta.exe
+RobloxPlayerBeta!field:
+00007ff7`d92d273c 009090909057    add     byte ptr [rax+57909090h],dl ds:000001ca`27499c80=??
+0:000> bp RobloxPlayerBeta!main
+0:000> g
+(3074.698c): Access violation - code c0000005 (!!! second chance !!!)
+RobloxPlayerBeta!field:
+00007ff7`d92d273c 009090909057    add     byte ptr [rax+57909090h],dl ds:000001ca`27499c80=??
+0:000> .echo ---M
+---M
+0:000> u RobloxPlayerBeta!fake_spawn L46
+RobloxPlayerBeta!fake_spawn:
+00007ff7`d92d26cc 48895c2408      mov     qword ptr [rsp+8],rbx
+00007ff7`d92d26d1 48896c2410      mov     qword ptr [rsp+10h],rbp
+00007ff7`d92d26d6 4889742418      mov     qword ptr [rsp+18h],rsi
+00007ff7`d92d26db 57              push    rdi
+00007ff7`d92d26dc 4883ec20        sub     rsp,20h
+00007ff7`d92d26e0 488bf9          mov     rdi,rcx
+00007ff7`d92d26e3 e8d535fdff      call    RobloxPlayerBeta!ILT+19640(?lua_gettopYAHPEAUlua_StateZ) (00007ff7`d92a5cbd)
+00007ff7`d92d26e8 ba01000000      mov     edx,1
+00007ff7`d92d26ed 488bcf          mov     rcx,rdi
+00007ff7`d92d26f0 8bf0            mov     esi,eax
+00007ff7`d92d26f2 e81253fdff      call    RobloxPlayerBeta!ILT+27140(?lua_pushvalueYAXPEAUlua_StateHZ) (00007ff7`d92a7a09)
+00007ff7`d92d26f7 bb02000000      mov     ebx,2
+00007ff7`d92d26fc 3bf3            cmp     esi,ebx
+00007ff7`d92d26fe 7c10            jl      RobloxPlayerBeta!fake_spawn+0x44 (00007ff7`d92d2710)
+00007ff7`d92d2700 8bd3            mov     edx,ebx
+00007ff7`d92d2702 488bcf          mov     rcx,rdi
+00007ff7`d92d2705 e8ff52fdff      call    RobloxPlayerBeta!ILT+27140(?lua_pushvalueYAXPEAUlua_StateHZ) (00007ff7`d92a7a09)
+00007ff7`d92d270a ffc3            inc     ebx
+00007ff7`d92d270c 3bde            cmp     ebx,esi
+00007ff7`d92d270e 7ef0            jle     RobloxPlayerBeta!fake_spawn+0x34 (00007ff7`d92d2700)
+00007ff7`d92d2710 4533c0          xor     r8d,r8d
+00007ff7`d92d2713 8d56ff          lea     edx,[rsi-1]
+00007ff7`d92d2716 488bcf          mov     rcx,rdi
+00007ff7`d92d2719 e8ab56fdff      call    RobloxPlayerBeta!ILT+28100(?lua_callYAXPEAUlua_StateHHZ) (00007ff7`d92a7dc9)
+00007ff7`d92d271e 488b5c2430      mov     rbx,qword ptr [rsp+30h]
+00007ff7`d92d2723 33c0            xor     eax,eax
+00007ff7`d92d2725 488b6c2438      mov     rbp,qword ptr [rsp+38h]
+00007ff7`d92d272a 488b742440      mov     rsi,qword ptr [rsp+40h]
+00007ff7`d92d272f 4883c420        add     rsp,20h
+00007ff7`d92d2733 5f              pop     rdi
+00007ff7`d92d2734 c3              ret
+00007ff7`d92d2735 cc              int     3
+00007ff7`d92d2736 cc              int     3
+00007ff7`d92d2737 cc              int     3
+RobloxPlayerBeta!fake_wait:
+00007ff7`d92d2738 e9c3d81d00      jmp     00007ff7`d94b0000
+00007ff7`d92d273d 90              nop
+00007ff7`d92d273e 90              nop
+00007ff7`d92d273f 90              nop
+00007ff7`d92d2740 90              nop
+00007ff7`d92d2741 57              push    rdi
+00007ff7`d92d2742 4883ec30        sub     rsp,30h
+00007ff7`d92d2746 488b05eb901a00  mov     rax,qword ptr [RobloxPlayerBeta!g+0x38 (00007ff7`d947b838)]
+00007ff7`d92d274d 4d8bd0          mov     r10,r8
+00007ff7`d92d2750 488bfa          mov     rdi,rdx
+00007ff7`d92d2753 488bd9          mov     rbx,rcx
+00007ff7`d92d2756 4885c0          test    rax,rax
+00007ff7`d92d2759 742f            je      RobloxPlayerBeta!field+0x4e (00007ff7`d92d278a)
+00007ff7`d92d275b 48833df5901a0000 cmp     qword ptr [RobloxPlayerBeta!g+0x58 (00007ff7`d947b858)],0
+00007ff7`d92d2763 7425            je      RobloxPlayerBeta!field+0x4e (00007ff7`d92d278a)
+00007ff7`d92d2765 4533c9          xor     r9d,r9d
+00007ff7`d92d2768 48c744242000000000 mov   qword ptr [rsp+20h],0
+00007ff7`d92d2771 4533c0          xor     r8d,r8d
+00007ff7`d92d2774 498bd2          mov     rdx,r10
+00007ff7`d92d2777 ffd0            call    rax
+00007ff7`d92d2779 4c8bc7          mov     r8,rdi
+00007ff7`d92d277c bafeffffff      mov     edx,0FFFFFFFEh
+00007ff7`d92d2781 488bcb          mov     rcx,rbx
+00007ff7`d92d2784 ff15ce901a00    call    qword ptr [RobloxPlayerBeta!g+0x58 (00007ff7`d947b858)]
+00007ff7`d92d278a 488b5c2440      mov     rbx,qword ptr [rsp+40h]
+00007ff7`d92d278f 4883c430        add     rsp,30h
+00007ff7`d92d2793 5f              pop     rdi
+00007ff7`d92d2794 c3              ret
+00007ff7`d92d2795 cc              int     3
+00007ff7`d92d2796 cc              int     3
+00007ff7`d92d2797 cc              int     3
+RobloxPlayerBeta!find_createtable:
+00007ff7`d92d2798 48895c2408      mov     qword ptr [rsp+8],rbx
+00007ff7`d92d279d 4889742410      mov     qword ptr [rsp+10h],rsi
+00007ff7`d92d27a2 57              push    rdi
+00007ff7`d92d27a3 4883ec60        sub     rsp,60h
+00007ff7`d92d27a7 488b05d2731a00  mov     rax,qword ptr [RobloxPlayerBeta!__security_cookie (00007ff7`d9479b80)]
+0:000> q
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

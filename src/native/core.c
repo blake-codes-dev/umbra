@@ -110,6 +110,98 @@ static int calibrate(unsigned char *base);
 static int open_pipe(void);
 static char g_stage[32] = "start";
 
+#ifndef UMBRA_HOST   /* in the harness the real CRT is linked */
+/* ---- the few crt-owned symbols MSVC still references -----------------------------------------
+   Linking the static CRT would drag its startup in (cookies, per-thread data, atexit) and the
+   payload is manual-mapped with no init call, so the handful of symbols the compiler and the
+   SEH dispatcher emit are provided here instead. The CFG dispatch pointers become a two byte
+   `jmp rax` thunk built once at load; the "is this image data read-only" query walks our own
+   section table. */
+int _fltused = 0;
+int __isa_available = 1;      /* x64 always has SSE2; the crt's mem* dispatch reads this */
+unsigned int __favor = 0;     /* no os-enabled extras to favour */
+size_t __memset_fast_string_threshold = 0x8000;
+size_t __memset_nt_threshold = 0x100000;
+void *__guard_check_icall_fptr;
+void *__guard_dispatch_icall_fptr;
+
+#pragma function(memcpy, memset, memcmp)
+void *calloc(size_t count, size_t size)
+{
+    size_t total = count * size;
+    return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, total ? total : 1);
+}
+
+void *malloc(size_t size)
+{
+    return HeapAlloc(GetProcessHeap(), 0, size ? size : 1);
+}
+
+void free(void *block)
+{
+    if (block) HeapFree(GetProcessHeap(), 0, block);
+}
+
+#pragma function(strlen)
+size_t strlen(const char *text)
+{
+    const char *p = text;
+    while (*p) p++;
+    return (size_t)(p - text);
+}
+
+int strcpy_s(char *to, size_t size, const char *from)
+{
+    size_t i = 0;
+    if (!size) return 22;
+    while (from[i] && i + 1 < size) { to[i] = from[i]; i++; }
+    to[i] = 0;
+    return 0;
+}
+
+int wcsncmp(const wchar_t *a, const wchar_t *b, size_t count)
+{
+    while (count--) { if (*a != *b) return *a - *b; if (!*a) break; a++; b++; }
+    return 0;
+}
+
+void abort(void) { ExitProcess(3); }
+void terminate(void) { ExitProcess(3); }
+
+int _IsNonwritableInCurrentImage(const void *target)
+{
+    unsigned char *base = (unsigned char *)GetModuleHandleA(0);
+    unsigned char *nt;
+    unsigned short sections;
+    int i;
+    if (!base) return 0;
+    nt = base + *(unsigned int *)(base + 0x3C);
+    sections = *(unsigned short *)(nt + 6);
+    nt = nt + 24 + *(unsigned short *)(nt + 20);
+    for (i = 0; i < sections; i++) {
+        unsigned char *entry = nt + i * 40;
+        unsigned char *start = base + *(unsigned int *)(entry + 12);
+        unsigned char *end = start + *(unsigned int *)(entry + 8);
+        const unsigned char *p = (const unsigned char *)((unsigned long long)target & ~3ull);
+        if (p >= start && p < end) return (*(unsigned int *)(entry + 36) & 0x80000000u) != 0;
+    }
+    return 0;
+}
+
+static void init_guard_thunks(void)
+{
+    unsigned char *thunk = (unsigned char *)VirtualAlloc(0, 0x1000, MEM_COMMIT | MEM_RESERVE,
+                                                       PAGE_EXECUTE_READWRITE);
+    if (!thunk) return;
+    thunk[0] = 0xFF;                     /* jmp rax - the caller leaves the target in rax */
+    thunk[1] = 0xE0;
+    thunk[2] = 0xC3;                     /* the check-style call just returns */
+    __guard_check_icall_fptr = (void *)(thunk + 2);
+    __guard_dispatch_icall_fptr = (void *)thunk;
+    FlushInstructionCache(GetCurrentProcess(), thunk, 8);
+}
+#endif
+
 /* ------------------------------------------------------------------ plumbing */
 /* safe read: MSVC uses SEH, mingw (whose SEH is a no-op) reads through the kernel instead.
    Everything that can point at a wrong address goes through this. */
@@ -1845,11 +1937,15 @@ static int install_hook(void *target)
     stub[n++] = 0x52;                                     /* push rdx */
     stub[n++] = 0x41; stub[n++] = 0x50;                   /* push r8  */
     stub[n++] = 0x41; stub[n++] = 0x51;                   /* push r9  */
-    /* five saves leave the call site 16-byte aligned, which is what __cdecl wants */
+    /* The callee owns the 32 bytes below rsp as shadow space. Without reserving them the thunk
+       spills straight over the five saved registers and the pops restore garbage, so they have
+       to be subtracted too (40 + 32 also keeps the call 16-byte aligned). */
+    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xEC; stub[n++] = 0x20;  /* sub rsp, 0x20 */
     stub[n++] = 0x48; stub[n++] = 0xB8;                   /* mov rax, hook_thunk */
     *(unsigned long long *)&stub[n] = (unsigned long long)hook_thunk;
     n += 8;
     stub[n++] = 0xFF; stub[n++] = 0xD0;                   /* call rax */
+    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xC4; stub[n++] = 0x20;  /* add rsp, 0x20 */
     stub[n++] = 0x41; stub[n++] = 0x59;                   /* pop r9  */
     stub[n++] = 0x41; stub[n++] = 0x58;                   /* pop r8  */
     stub[n++] = 0x5A;                                     /* pop rdx */
@@ -1973,6 +2069,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved)
     (void)self;
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
+#ifndef UMBRA_HOST
+        init_guard_thunks();
+#endif
         /* the host calls umbra_entry through the hijacked thread, not from here: DllMain
            has a loader lock and every scan would be riskier inside it */
         stage("attach");

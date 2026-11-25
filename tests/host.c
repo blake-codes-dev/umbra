@@ -15,6 +15,7 @@ typedef struct { void *BaseAddress; void *AllocBase; unsigned AllocProtect; unsi
 
 #include "lualib.h"
 #include "luacode.h"
+#include <intrin.h>   /* _AddressOfReturnAddress, used by the thunk trace */
 
 #include "../src/native/core.c"
 
@@ -47,6 +48,13 @@ extern HANDLE g_client;
 #define ATTR_NOINLINE __attribute__((noinline))
 #endif
 
+/* the calibration fakes have to keep the exact shapes the scanner looks for (a store to
+   [reg+0x80] with a disp32, an early ret, the call as the last such callee), which the
+   optimiser is free to rewrite, so they are compiled unoptimised */
+#ifdef _MSC_VER
+#pragma optimize("", off)
+#endif
+
 static const char loadstring_name[] = "loadstring";
 static const char pcall_name[] = "pcall";
 static volatile const char *g_pcall_name_ref = pcall_name;
@@ -64,6 +72,10 @@ ATTR_NOINLINE static int fake_call_api(void *state, int nargs)      /* repeated,
     *(unsigned char **)((char *)state + 0x80) = (unsigned char *)g_top_stub;    /* its own top write */
     return 0;
 }
+
+#ifdef _MSC_VER
+#pragma optimize("", on)
+#endif
 
 /* luaB_pcall: the body is a call to lua_pcall, nothing else */
 int fake_luaB_pcall(void *state)
@@ -96,8 +108,12 @@ static int fake_spawn(lua_State *state)
     return 0;
 }
 
+/* the hook patches the first 5 bytes, so the fakes must be long enough that the patch does not
+   eat the next function's entry (a 3-byte `xor eax,eax; ret` gets its neighbour clobbered) */
+static volatile int g_waits;
 static int fake_wait(lua_State *state)
 {
+    g_waits++;          /* the side effect also keeps the body above 5 bytes at every -O level */
     (void)state;
     return 0;
 }
@@ -513,7 +529,7 @@ int main(void)
         g_quietThunk = 1;
         g_installed = 0;
         g_installed_via_thunk = 0;
-        int hookedTop = install_hook((void *)lua_gettop);
+        int hookedTop = getenv("UMBRA_NO_HOOK") ? 0 : install_hook((void *)lua_gettop);
         CHECK(hookedTop, "gettop hook installs");
         for (int round = 0; round < 5 && hookedTop; round++) {
             base = lua_gettop(L);

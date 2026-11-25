@@ -7,6 +7,12 @@
 local bridge = ...
 local api = {}
 
+-- the runner hands the native table over before any env is built
+function api.bind(native)
+    bridge = native
+    return api
+end
+
 local function need(name, fn)
     return function(...)
         if type(fn) ~= "function" then error(name .. ": native bridge missing (core not built)", 2) end

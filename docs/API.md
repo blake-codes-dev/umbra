@@ -1,8 +1,8 @@
 # API status
 
 Honest table. `luau` means implemented in `src/luau/api.luau` and working off bridges;
-`bridge` means the Luau side is done and it needs the matching native call; `todo` means
-nothing yet.
+`bridge` means the Luau side is done and the native closure exists in `core.c`; `todo` means
+nothing yet. A bridge in `bridge` has only been compiled, not run in a client.
 
 Nothing here is ticked until it ran in a live client.
 
@@ -22,13 +22,13 @@ Nothing here is ticked until it ran in a live client.
 | `hookfunction` | api | luau, guides upvalues onto the target |
 | `hookmetamethod` | api | luau |
 | `newcclosure` | api | luau wrapper, not a real C closure yet |
-| `getconnections`, `firesignal` | api | bridge, needs the signal walk |
+| `getconnections`, `firesignal` | api | todo, needs the signal walk |
 | `firetouchinterest` | api | luau best effort |
-| `writefile`, `readfile`, `appendfile`, `isfile`, `isfolder`, `makefolder`, `delfile`, `listfiles` | api | bridge, `__umbraFile` |
-| `request`, `httpget`, `HttpPost` | api | bridge, `__umbraHttp` (WinHTTP) |
-| `setclipboard`, `mousemoverel`, `keypress`, `keyrelease` | api | bridge, `__umbraInput` |
+| `writefile`, `readfile`, `appendfile`, `isfile`, `isfolder`, `makefolder`, `delfile`, `listfiles` | api | bridge, sandboxed to the workspace |
+| `request`, `httpget`, `HttpPost` | api | bridge, WinHTTP, returns status+body, never throws on 4xx |
+| `setclipboard`, `mousemoverel`, `keypress`, `keyrelease` | api | bridge, SendInput + clipboard |
 | `setfpscap` | api | luau no-op until the flag is found |
-| `isrbxactive` | api | bridge |
+| `isrbxactive` | api | bridge, foreground window pid |
 | `queue_on_teleport` | api | luau stub, stored only |
 | `getcustomasset` | api | needs the localhost asset server |
 
@@ -40,6 +40,7 @@ Nothing here is ticked until it ran in a live client.
 ## Rules
 
 - A missing bridge must `error` with the bridge name, never silently return `nil`.
+- Bridges push `false`+reason on failure; they never throw across the C/Luau boundary.
 - Anything that parses user input is the caller's risk: `request` returns body, status and
   headers, and never throws on an HTTP error code.
 - Files are sandboxed to `%LOCALAPPDATA%\Umbra\workspace`; `..` cannot escape it.

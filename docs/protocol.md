@@ -57,6 +57,18 @@ and reports `err`, it never blocks the client's scheduler.
 Ops: `1 exec`, `2 cancel`, `3 probe`, `4 shutdown`.
 Output kinds: `1 print`, `2 warn`, `3 error`, `4 info`, `5 done`.
 
+## Bridging into Luau
+
+`api.luau` and `runner.luau` ship next to the app and are read from `%LOCALAPPDATA%\Umbra`
+at inject time, so a Luau change needs no rebuild and the C side stays small. The native
+closures are registered in one table and rebound by the runner before any script env exists:
+file (workspace-sandboxed), WinHTTP, SendInput/clipboard, foreground check, plus the three
+bus closures the runner drains with. Every bridge returns its failure as a value.
+
+Function addresses are resolved as `module base + rva` from `tools/gen_patterns.py` output
+(`src/native/patterns.h`), with the recorded prologue as a scan fallback for anything not yet
+measured, so an unmeasured function still resolves if the prologue matches.
+
 ## Rules that matter
 
 - **Every risky read is wrapped.** The core uses `__try/__except` around every pointer deref;

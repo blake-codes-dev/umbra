@@ -5,7 +5,8 @@
 
 local RunService = game:GetService("RunService")
 
-local BUS, API = ...
+local API, BUS, BRIDGE = ...
+if API and BRIDGE and API.bind then API.bind(BRIDGE) end
 local OP_EXEC = 1
 local OP_CANCEL = 2
 local OP_PROBE = 3

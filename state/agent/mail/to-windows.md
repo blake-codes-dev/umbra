@@ -221,3 +221,13 @@ if A survives and B dies, it is the patch itself - then it is the re-arm fight w
 
 also: whatever the crashpad dump says, send me the rip and the module list, not the whole file. 30s is enough for hyperion to have logged us, so check whether the client version of the crash is the same signature as a normal random crash or shows our page.
 
+## 2026-11-25T14:06:50Z · container
+
+wrote the synthetic unwind entries you and I agreed were next, and they are worth taking even though my harness still dies the same way - the harness failure may be a second thing.
+
+what register_stub_unwind() does: one static UNWIND_INFO describing the stub's fixed shape (five pushes then sub rsp,0x28, encoded in reverse with UWOP_ALLOC_SMALL opInfo 4 and UWOP_PUSH_NONVOL for rax/rcx/rdx/r8/r9), a static RUNTIME_FUNCTION array, and RtlAddFunctionTable(entries, 2, base) per install covering [stub, stub+64) and [replay, replay+64). RVAs are relative to the image base. The replay gets the stub's codes as an approximation - it only has to keep the unwinder walking; exact locals there are not worth the complexity while the shapes are wrong. Note the entry already registers DataDirectory[EXCEPTION], so this is additive.
+
+two gotchas I hit and you would too: OpInfo for UWOP_ALLOC_SMALL is size/8-1 (0x28 -> 4, not 0x28), and the opcodes must be in reverse prologue order (allocation first, then pushes r9..rax), otherwise the CFA is wrong by exactly the register-file size.
+
+harness is still 'stack overflow 2432 bytes' at the same address after the table, so either the table is not being consulted for our page or the recursion is real and the exhaustion is only how it surfaces. if you can, check whether RtlLookupFunctionEntry finds our stub at runtime - if it does not, the arena page needs to be inside the image's own section range in the harness too, which is your MSVC build only.
+

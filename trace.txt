@@ -331,3 +331,5 @@ mapped but the pipe did not answer - check the client
 ready. pipe backend, needs an injected client on lyphen-PID.
 mapping into pid 28468
 mapped, mapped 84 KB, 98 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 28468

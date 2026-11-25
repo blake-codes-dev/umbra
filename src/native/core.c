@@ -2389,6 +2389,38 @@ static int flag(const char *name)
 
 static void install_now(void *hint);
 
+/* The base library closures are heap objects whose code pointer equals base+rva, with a closure
+   header right in front of it. Finding them in process beats asking the gui for them: the outside
+   heap scan has been returning nothing on fresh servers. */
+static void *find_closure(unsigned char *base, unsigned rva)
+{
+    SYSTEM_INFO info;
+    unsigned char *cursor;
+    unsigned char *want = base + rva;
+
+    if (!base) return 0;
+    GetSystemInfo(&info);
+    cursor = (unsigned char *)info.lpMinimumApplicationAddress;
+    while (cursor < (unsigned char *)info.lpMaximumApplicationAddress) {
+        MEMORY_BASIC_INFORMATION region;
+        unsigned char *walk, *end;
+        if (!VirtualQuery(cursor, &region, sizeof(region))) break;
+        cursor = (unsigned char *)region.BaseAddress + region.RegionSize;
+        if (region.State != MEM_COMMIT || region.Type != MEM_PRIVATE) continue;
+        if (region.Protect != PAGE_READWRITE) continue;
+        if (region.RegionSize > (256u << 20) || region.RegionSize < 0x40) continue;
+        walk = (unsigned char *)region.BaseAddress + 0x30;
+        end = (unsigned char *)region.BaseAddress + region.RegionSize;
+        for (; walk + 8 <= end; walk += 8) {
+            unsigned long long value;
+            if (!safe_read(walk, &value, 8)) continue;
+            if ((unsigned char *)value != want) continue;
+            if (walk[-0x28] == 0x01 && walk[-0x27] == 0x07) return walk - 0x28;
+        }
+    }
+    return 0;
+}
+
 /* called instead of the hooked function; its return goes through the replay stub */
 static void hook_thunk(void *first)
 {
@@ -2921,6 +2953,17 @@ static void install_now(void *hint)
         return;
     }
     g.state = state;
+    {
+        unsigned char *client = module_base(L"RobloxPlayerBeta.exe");
+        if (!g.loadstringClosure && client) {
+            void *found = find_closure(client, 0x41dc080u);
+            if (found) { g.loadstringClosure = found; put("closure loadstring"); }
+        }
+        if (!g.printClosure && client) {
+            void *found = find_closure(client, 0x41dc170u);
+            if (found) { g.printClosure = found; put("closure print"); }
+        }
+    }
     emit("i", 0, "on the vm thread, installing runner");
     /* proof of life that needs no table api: compile a chunk through the base library's own
        loadstring, run it, and log whatever comes back. The bridge needs lua_createtable and

@@ -818,6 +818,30 @@ int main(int argc, char **argv)
         FlushInstructionCache(GetCurrentProcess(), (void *)lua_pcall, 16);
     }
 
+    /* is our synthetic unwind table consulted at all? raise on purpose from a hooked call */
+    {
+        unsigned char keepU[16];
+        memcpy(keepU, (void *)lua_gettop, sizeof(keepU));
+        if (install_hook((void *)lua_gettop)) {
+#ifdef _MSC_VER
+            /* mingw has no SEH keyword in C and LYPHEN_TRY degrades to `if (1)`, so a deliberate
+               fault is fatal in the wine harness and only meaningful in an MSVC build */
+            int caught = 0;
+            __try { *(volatile int *)1 = 7; }
+            __except (EXCEPTION_EXECUTE_HANDLER) { caught = 1; }
+            printf("  [dbg] raise inside hooked frame caught=%d\n", caught);
+            CHECK(caught, "an exception raised under a stub is caught, not fatal");
+#endif
+        }
+        {   extern int VirtualProtect(void *, unsigned long long, unsigned long, unsigned long *);
+            unsigned long was = 0;
+            VirtualProtect((void *)lua_gettop, sizeof(keepU), 0x40, &was);
+            memcpy((void *)lua_gettop, keepU, sizeof(keepU));
+            VirtualProtect((void *)lua_gettop, sizeof(keepU), was, &was);
+        }
+        FlushInstructionCache(GetCurrentProcess(), (void *)lua_gettop, 16);
+    }
+
     /* does the Heartbeat fake work at all, before any runner is involved? */
     {
         g_heartbeat = 0;

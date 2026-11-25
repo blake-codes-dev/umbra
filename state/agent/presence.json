@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795615385.9741557,
-  "iso": "2026-11-25T14:03:05Z",
-  "note": "live.bat home screen; nohook bisect switch for the 30s death",
+  "at": 1795615611.3445196,
+  "iso": "2026-11-25T14:06:51Z",
+  "note": "stub+replay unwind entries written",
   "state": "working",
   "alerted": false,
-  "beats": 14
+  "beats": 15
  },
  "windows": {
   "at": 1795614841.399289,

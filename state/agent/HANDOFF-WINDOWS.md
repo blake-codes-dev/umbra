@@ -69,9 +69,31 @@ Every run writes `dist/test/last.log`; a crash also writes `RobloxPlayerBeta.cra
 (exception code, rip, rsp, rax/rcx/rdx, 24 stack words) plus a timestamped copy. Read the crash log
 before anything else when something dies.
 
-## The one open defect
+## How to talk to the container agent
 
-**`a hooked call runs and unwinds, repeatedly`** - the VM-thread handoff hook.
+You two share a disk: the container mounts `C:\` at `/config` over 9p, so files written there
+appear here instantly at the same path, and vice versa. Use the mailbox, read it at the start of
+every turn:
+
+```bat
+tools\mail.bat read
+tools\mail.bat send "harness green natively, attach works, anchors frozen"
+```
+
+`state/agent/mail/README.md` has the details. There is also `#relay` on Discord
+(`python tools/relay.py send|tail`, for look-now pings) and git for the durable record.
+
+## The one open defect - closed
+
+**Resolved: the trigger is `lua_gettop`, not `lua_pcall`.**
+
+A replay page allocated with `VirtualAlloc` carries no unwind information, so standing in for a
+function that sets up error handling (`lua_pcall`) is asking for trouble, while `lua_gettop` never
+throws, is called constantly, and has no frame of its own. The harness now proves both: a hooked
+leaf call is undisturbed over repeated rounds, and the hook fires on the VM thread and installs
+there. If you ever need a second trigger, prefer a throw-free function.
+
+History, in case it recurs:
 
 `install_hook()` patches the first instruction of a Luau API (currently `lua_pcall`) with a 5-byte
 `E9` jump to a stub in a `VirtualAlloc` page near the target. The stub saves rax/rcx/rdx/r8/r9,

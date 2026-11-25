@@ -45,6 +45,8 @@
 #define L_CI 0x58
 #define L_GLOBAL 0x68
 
+
+
 #ifndef UMBRA_HOST
 /* in the shipped build there is no lua.h: the state is opaque and the API arrives as
    function pointers from the scan. The harness includes the real header instead. */
@@ -1181,7 +1183,7 @@ static void *anchor_calls(unsigned char *base, const char *name, size_t nameLeng
     if (!base) return 0;
     hit = find_name(base, name, nameLength, 0);
 #ifdef UMBRA_HOST
-    { extern int printf(const char *, ...); printf("  [dbg] anchor %s base=%p hit=%p\n", name, (void *)base, (void *)hit); }
+    { printf("  [dbg] anchor %s base=%p hit=%p\n", name, (void *)base, (void *)hit); }
 #endif
     while (hit && !chosen) {
         void *ref = find_reference(hit, 192u << 20);
@@ -1627,13 +1629,32 @@ static int cb_pump(lua_State *state)
  * in a state where a call is expected, and the runner is installed from there exactly once.
  */
 static unsigned char *g_trampoline;
-static unsigned char *g_replay;
+static unsigned char *g_replay;      /* replay buffer of the hook being installed */
+static unsigned char *g_hookArena;   /* next free stub slot; each hook owns 256 bytes */
+#define HOOK_SLOT 256
+#define HOOK_SLOTS (4096 / HOOK_SLOT)
+
+/* one record per live hook: re-installing on the same target must rebuild from the *original*
+   bytes, because at that point the first bytes are our own E9 and replaying those would jump to
+   the old stub, whose tail then lands in the middle of the new patch. */
+typedef struct {
+    void *target;
+    int displaced;
+    unsigned char orig[32];
+} HOOKREC;
+static HOOKREC g_hooks[HOOK_SLOTS];
+static int g_hookCount;
 #ifdef UMBRA_HOST
-static int g_noThunk;
+#define HOST_ONLY(x) (x)
+static int g_noThunk;                   /* harness switches: shorten the stub, silence it */
 static int g_quietThunk;
-#endif   /* executable page: a jump target cannot live in .data */
+#else
+#define HOST_ONLY(x) 0
+enum { g_quietThunk = 1 };
+#endif
 static void *g_hookTarget;
 static int g_installed;
+int g_installed_via_thunk;              /* read by the harness: prove we landed on the VM thread */
 static int g_hooked;
 static char *g_apiSource;
 static char *g_runnerSource;
@@ -1644,8 +1665,9 @@ static void install_now(void);
 static void hook_thunk(void)
 {
 #ifdef UMBRA_HOST
-    if (!g_quietThunk) { extern int printf(const char *, ...); printf("  [dbg] thunk\n"); }
+    if (!g_quietThunk) printf("  [dbg] thunk\n");
 #endif
+    g_installed_via_thunk = 1;
     if (!g_installed) install_now();
 }
 
@@ -1729,17 +1751,41 @@ static int install_hook(void *target)
                                                          PAGE_EXECUTE_READWRITE);
         if (!g_trampoline) return 0;
     }
-    stub = g_trampoline;
-    g_replay = g_trampoline + 64;
+    /* Every hook needs its own stub and replay: reusing one page means the second install
+       overwrites the first hook's displaced bytes, so the first target then replays the
+       second target's prologue and tail-jumps into the wrong function. */
+    if (!g_hookArena) g_hookArena = g_trampoline;
+    if (g_hookArena + HOOK_SLOT > g_trampoline + 4096) return 0;
+    if (displaced > (int)sizeof(g_hooks[0].orig)) return 0;
 
-    for (i = 0; i < displaced; i++) g_replay[i] = at[i];
+    /* already hooked there? rebuild from the saved prologue instead of the live bytes */
+    for (i = 0; i < g_hookCount; i++)
+        if (g_hooks[i].target == target) break;
+    if (i < g_hookCount) {
+        stub = g_trampoline + HOOK_SLOT * i;
+        g_replay = stub + 64;
+        displaced = g_hooks[i].displaced;
+        for (n = 0; n < displaced; n++) g_replay[n] = g_hooks[i].orig[n];
+        n = displaced;
+    }
+    else {
+        if (g_hookCount >= HOOK_SLOTS) return 0;
+        stub = g_hookArena;
+        g_hookArena += HOOK_SLOT;
+        g_replay = stub + 64;
+        g_hooks[g_hookCount].target = target;
+        g_hooks[g_hookCount].displaced = displaced;
+        for (n = 0; n < displaced; n++) g_hooks[g_hookCount].orig[n] = at[n];
+        g_hookCount++;
+        for (n = 0; n < displaced; n++) g_replay[n] = at[n];
+    }
     g_replay[displaced] = 0xE9;
     {
         long rel = (long)(at + displaced - (g_replay + displaced + 5));
         memcpy(g_replay + displaced + 1, &rel, 4);
     }
 
-    if (g_noThunk) {                                      /* bisect: replay only */
+    if (HOST_ONLY(g_noThunk)) {                                      /* bisect: replay only */
         n = 0;
         stub[n++] = 0xE9;
         {
@@ -1773,6 +1819,10 @@ static int install_hook(void *target)
 patch_target:
     FlushInstructionCache(GetCurrentProcess(), g_trampoline, 128);
 
+#ifdef UMBRA_HOST
+    printf("  [dbg] install at=%p displaced=%d stub=%p replay=%p rel=%lld\n", (void *)at,
+           displaced, (void *)stub, (void *)g_replay, (long long)(stub - (at + 5)));
+#endif
     delta = (unsigned char *)stub - (at + 5);
     if (delta > 0x7FFFFFFFLL || delta < -0x7FFFFFFFLL) return 0;
     if (!VirtualProtect(at, displaced + 8, PAGE_EXECUTE_READWRITE, &old)) return 0;
@@ -1855,7 +1905,10 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
         g_apiSource = read_chunk("api.luau");
         g_runnerSource = read_chunk("runner.luau");
         if (!g_runnerSource) fail("compile", "runner.luau missing from %LOCALAPPDATA%\\Umbra");
-        else if (g.pcall && install_hook((void *)g.pcall))
+        /* gettop is the trigger of choice: it is called constantly, it never throws, and it has no
+           frame of its own, so replaying its prologue cannot disturb error handling. The trampoline
+           page carries no unwind info, so a throwing function is the wrong place to stand in. */
+        else if (g.gettop && install_hook((void *)g.gettop))
             emit("i", 0, "waiting for the vm thread");
         else {
             /* no hook possible: fall back to installing from here, which is the racy path */

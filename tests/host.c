@@ -9,12 +9,14 @@
 #define UMBRA_HOST 1
 
 typedef struct { void *BaseAddress; void *AllocBase; unsigned AllocProtect; unsigned long long RegionSize; unsigned State; unsigned Protect; unsigned Type; } MEMORY_BASIC_INFORMATION_;
+#include <stdio.h>
+#include <string.h>
+#include <stddef.h>
+
 #include "lualib.h"
 #include "luacode.h"
 
 #include "../src/native/core.c"
-
-#include <stdio.h>
 
 static lua_State *L;
 static int g_heartbeat = 0;      /* registry ref of the RunService.Heartbeat handler */
@@ -36,18 +38,27 @@ extern HANDLE g_client;
 
 /* ---- a fake luaB_loadstring, so the calibration path is exercised for real.
    The name has to be a genuine lea from our own .text, which is what the scan looks for. */
+/* the container builds this with gcc, the windows box with cl - keep both happy */
+#ifdef _MSC_VER
+#define ATTR_USED
+#define ATTR_NOINLINE __declspec(noinline)
+#else
+#define ATTR_USED __attribute__((used))
+#define ATTR_NOINLINE __attribute__((noinline))
+#endif
+
 static const char loadstring_name[] = "loadstring";
 static const char pcall_name[] = "pcall";
 static volatile const char *g_pcall_name_ref = pcall_name;
-__attribute__((used)) static void use_pcall_name(void) { g_pcall_name_ref = pcall_name; }
+ATTR_USED static void use_pcall_name(void) { g_pcall_name_ref = pcall_name; }
 static volatile unsigned char *g_top_stub;
 
-__attribute__((noinline)) static void fake_push_top(void *state)                 /* writes L->top, like luau_load */
+ATTR_NOINLINE static void fake_push_top(void *state)                 /* writes L->top, like luau_load */
 {
     *(unsigned char **)((char *)state + 0x80) = (unsigned char *)g_top_stub;
 }
 
-__attribute__((noinline)) static int fake_call_api(void *state, int nargs)      /* repeated, like lua_pcall */
+ATTR_NOINLINE static int fake_call_api(void *state, int nargs)      /* repeated, like lua_pcall */
 {
     if (nargs > 8) return -1;
     *(unsigned char **)((char *)state + 0x80) = (unsigned char *)g_top_stub;    /* its own top write */
@@ -326,6 +337,20 @@ static LONG WINAPI crash_dump(EXCEPTION_POINTERS *info)
     PUT("rsp  "); HEX(info->ContextRecord->Rsp); PUT("\n");
     PUT("rax  "); HEX(info->ContextRecord->Rax); PUT(" rcx ");
     HEX(info->ContextRecord->Rcx); PUT(" rdx "); HEX(info->ContextRecord->Rdx); PUT("\n");
+    {   /* which module owns the faulting address? bare rip is useless with a static crt */
+        MEMORY_BASIC_INFORMATION *mbi = (MEMORY_BASIC_INFORMATION *)buffer + 1400 / sizeof(void *);
+        char owner[MAX_PATH];
+        if (VirtualQuery((void *)info->ContextRecord->Rip, mbi, sizeof(*mbi)) &&
+            GetModuleFileNameA((HMODULE)mbi->AllocationBase, owner, MAX_PATH)) {
+            PUT("in   "); PUT(owner); PUT(" +");
+            HEX((unsigned long long)(info->ContextRecord->Rip - (unsigned long long)mbi->AllocationBase));
+            PUT("\n");
+        }
+        if (VirtualQuery((void *)info->ContextRecord->Rsp, mbi, sizeof(*mbi)) &&
+            GetModuleFileNameA((HMODULE)mbi->AllocationBase, owner, MAX_PATH)) {
+            PUT("stk  "); PUT(owner); PUT("\n");
+        }
+    }
     stack = (unsigned long long *)info->ContextRecord->Rsp;
     for (i = 0; i < 24 && !IsBadReadPtr(stack + i, 8); i++) {
         PUT("["); HEX(i); PUT("] "); HEX(stack[i]); PUT("\n");
@@ -339,6 +364,9 @@ static LONG WINAPI crash_dump(EXCEPTION_POINTERS *info)
 
 int main(void)
 {
+    setvbuf(stdout, 0, _IONBF, 0);
+    /* a crash must not swallow the log */
+    printf("  [dbg] image base %p\n", (void *)GetModuleHandleA(0));
     char transcript[16384];
     char busPath[MAX_PATH];
     char *apiSource, *runnerSource;
@@ -429,44 +457,82 @@ int main(void)
         }
         FlushInstructionCache(GetCurrentProcess(), (void *)lua_pcall, sizeof(orig));
     }
-    g_noThunk = 1;
-    int hooked = install_hook((void *)lua_pcall);
-    if (hooked) {
-        /* second install with the thunk disabled, to isolate stub from replay */
-        unsigned char keep[16];
-        memcpy(keep, (void *)lua_pcall, sizeof(keep));
-        (void)keep;
+    /* the hook machinery, proved on a leaf function whose result is observable */
+    {
+        unsigned char keepTop[16];
+        int okTop = 1, base;
+        memcpy(keepTop, (void *)lua_gettop, sizeof(keepTop));
+        g_noThunk = 0;
+        g_quietThunk = 1;
+        if (install_hook((void *)lua_gettop)) {
+            for (int round = 0; round < 5; round++) {
+                base = lua_gettop(L);
+                lua_pushinteger(L, round);
+                if (lua_gettop(L) != base + 1) { okTop = 0; }
+                lua_pop(L, 1);
+                if (lua_gettop(L) != base) { okTop = 0; }
+            }
+        }
+        {   extern int VirtualProtect(void *, unsigned long long, unsigned long, unsigned long *);
+            unsigned long was = 0;
+            VirtualProtect((void *)lua_gettop, sizeof(keepTop), 0x40, &was);
+            memcpy((void *)lua_gettop, keepTop, sizeof(keepTop));
+            VirtualProtect((void *)lua_gettop, sizeof(keepTop), was, &was);
+        }
+        FlushInstructionCache(GetCurrentProcess(), (void *)lua_gettop, 16);
+        CHECK(okTop, "the hook does not disturb a leaf call");
     }
-    printf("  [dbg] hooked=%d stub=%p replay=%p\n", hooked, (void *)g_trampoline, (void *)g_replay);
-    if (hooked) {
-        unsigned char *at = (unsigned char *)lua_pcall;
-        printf("  [dbg] patched: ");
-        for (int k = 0; k < 20; k++) printf("%02x ", at[k]);
-        printf("\n  [dbg] stub   : ");
-        for (int k = 0; k < 40; k++) printf("%02x ", g_trampoline[k]);
-        printf("\n  [dbg] replay : ");
-        for (int k = 0; k < 20; k++) printf("%02x ", g_replay[k]);
-        {   int rel = *(int *)(g_replay + 6);
-            printf("\n  [dbg] at=%p want=%p decoded=%p\n", (void *)at,
-                   (void *)(at + 5), (void *)(g_replay + 10 + rel)); }
-    }
-    CHECK(hooked || 1, "pcall hook installs or is skipped cleanly");
-    if (g_hooked) {
-        int top = lua_gettop(L);
+
+    /* does the harness actually reach this symbol? poison the entry with `mov eax,99; ret` */
+    {
+        unsigned char keepPoison[16], poison[16] = {0xB8, 99, 0, 0, 0, 0xC3};
+        extern int VirtualProtect(void *, unsigned long long, unsigned long, unsigned long *);
+        unsigned long was = 0;
+        memcpy(keepPoison, (void *)lua_pcall, sizeof(keepPoison));
+        VirtualProtect((void *)lua_pcall, 16, 0x40, &was);
+        memcpy((void *)lua_pcall, poison, sizeof(poison));
+        VirtualProtect((void *)lua_pcall, 16, was, &was);
+        FlushInstructionCache(GetCurrentProcess(), (void *)lua_pcall, 16);
         lua_pushcclosurek(L, fake_wait, 0, 0, 0);
-        int ok = 1;
-        for (int round = 0; round < 5; round++) {
-            lua_pushinteger(L, 1);            /* a spare value below the callee */
-            lua_pushcclosurek(L, fake_wait, 0, 0, 0);
-            int st = lua_pcall(L, 0, 0, 0);
-            if (st != 0) printf("  [dbg] msg: %s\n", lua_tolstring(L, -1, 0));
-            printf("  [dbg] round %d st=%d top=%d want=%d left=%s\n", round, st, lua_gettop(L), top,
-                   lua_gettop(L) > top ? lua_typename(L, lua_type(L, -1)) : "-");
+        printf("  [dbg] poison returns %d (99 means the symbol is really called)\n",
+               lua_pcall(L, 0, 0, 0));
+        lua_settop(L, 0);
+        VirtualProtect((void *)lua_pcall, 16, 0x40, &was);
+        memcpy((void *)lua_pcall, keepPoison, sizeof(keepPoison));
+        VirtualProtect((void *)lua_pcall, 16, was, &was);
+        FlushInstructionCache(GetCurrentProcess(), (void *)lua_pcall, 16);
+    }
+
+    /* the shipped trigger: gettop, with the thunk live, must hand the install to this thread */
+    {
+        unsigned char keepTop[16];
+        int ok = 1, base, seen = 0;
+        extern int g_installed_via_thunk;
+        memcpy(keepTop, (void *)lua_gettop, sizeof(keepTop));
+        g_noThunk = 0;
+        g_quietThunk = 1;
+        g_installed = 0;
+        g_installed_via_thunk = 0;
+        int hookedTop = install_hook((void *)lua_gettop);
+        CHECK(hookedTop, "gettop hook installs");
+        for (int round = 0; round < 5 && hookedTop; round++) {
+            base = lua_gettop(L);
+            lua_pushinteger(L, round);
+            if (lua_gettop(L) != base + 1) ok = 0;
+            if (g_installed_via_thunk) seen = 1;
             lua_pop(L, 1);
-            if (st != 0) { printf("  [dbg] hooked call status=%d msg=%s\n", st, lua_tolstring(L, -1, 0)); lua_pop(L, 1); ok = 0; }
-            else if (lua_gettop(L) != top) { printf("  [dbg] stack drift\n"); ok = 0; }
+            if (lua_gettop(L) != base) ok = 0;
         }
         CHECK(ok, "a hooked call runs and unwinds, repeatedly");
+        CHECK(seen, "the hook fires on the vm thread and installs there");
+        g_installed = 1;
+        {   extern int VirtualProtect(void *, unsigned long long, unsigned long, unsigned long *);
+            unsigned long was = 0;
+            VirtualProtect((void *)lua_gettop, sizeof(keepTop), 0x40, &was);
+            memcpy((void *)lua_gettop, keepTop, sizeof(keepTop));
+            VirtualProtect((void *)lua_gettop, sizeof(keepTop), was, &was);
+        }
+        FlushInstructionCache(GetCurrentProcess(), (void *)lua_gettop, 16);
     }
 
     apiSource = slurp("src/luau/api.luau");

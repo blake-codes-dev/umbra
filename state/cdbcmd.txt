@@ -1,0 +1,7 @@
+sxe av
+g
+.echo ---C
+.exr -1
+u RobloxPlayerBeta!fake_spawn L22
+r @rip @rsp @rax @rcx
+q

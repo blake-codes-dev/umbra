@@ -1,11 +1,13 @@
 {
  "next": [
-  "measure the 12 unmeasured anchors live (luau_load, lua_pcall, the push/pop set): they are the only things between here and a first chunk running",
-  "signals: getconnections needs the connection table walk; do it after a chunk runs so the loop is small",
-  "assert a TString push on the found state before any reload (top must move by 16, base unchanged)",
-  "menu: keep the shipped scripts on the newest client version and re-check each one",
-  "after this ships: Fortnite mod menu as a second product (UE/UObject side, shared store+updater, undetected-first, user-mode then an optional signed driver, see the queue note)"
+  "windows side: build the harness with MSVC, confirm 22/22 outside wine",
+  "windows side: build core.dll, attach on the alt account, load fullbright.luau, read the 12 anchors back",
+  "freeze the resolved anchors into patterns.json / patterns.h once a live run prints them",
+  "replace CreateRemoteThread with a hijacked client thread",
+  "verify the spoofer and account location with the alt signed in"
  ],
- "blocked": ["live measurement needs the windows box; this container has no Roblox"],
- "updated": "2026-11-25T01:15:00"
+ "blocked": [
+  "live attach needs the windows box; this container has no Roblox"
+ ],
+ "updated": "2026-11-25T05:04:12"
 }

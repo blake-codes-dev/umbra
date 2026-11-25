@@ -1725,6 +1725,49 @@ static int sub_insn_len(const unsigned char *code)
    Popping the return address is what makes the frame identical to a normal entry: the callee
    later returns straight to the caller instead of back into our patch. The NOP padding only
    exists so the jump can always be five bytes. */
+/* Displaced instructions are replayed at a different address, so every relative branch in them
+   has to be re-encoded: an ILT thunk's body is nothing but `jmp rel32`, and copied verbatim it
+   lands a quarter of the image away, in unmapped memory. Rel8 and rel32 jumps/calls only; a
+   rip-relative memory operand still needs the address itself and is reported as unsupported. */
+static int fix_replay(unsigned char *at, unsigned char *replay, int displaced)
+{
+    int off = 0;
+    while (off < displaced) {
+        int len = sub_insn_len(at + off);
+        int p = 0, op, rel = 0, width = 0;
+        if (!len) return 0;
+        while (p < 3 && (at[off + p] == 0x66 || at[off + p] == 0x67
+                         || at[off + p] == 0xF2 || at[off + p] == 0xF3)) p++;
+        if (at[off + p] >= 0x40 && at[off + p] <= 0x4F) p++;
+        op = at[off + p];
+        if (op == 0xE8 || op == 0xE9 || op == 0xEB) width = (op == 0xEB) ? 1 : 4;
+        else if (op == 0x0F && (at[off + p + 1] & 0xF0) == 0x80) { width = 4; p++; }
+        else if (op >= 0x70 && op <= 0x7F) width = 1;
+        if (width) {
+            /* displacement sits at the end of the instruction */
+            if (width == 4) {
+                int target, fresh;
+                memcpy(&rel, at + off + len - 4, 4);
+                target = (int)(at + off + len) + rel;
+                fresh = target - (int)(replay + off + len);
+                memcpy(replay + off + len - 4, &fresh, 4);
+            }
+            else {
+                {
+                    int target, rel8 = (unsigned char)at[off + len - 1];
+                    if (rel8 & 0x80) rel8 -= 0x100;
+                    target = (int)(at + off + len) + rel8;
+                    int fresh = target - (int)(replay + off + len);
+                    if (fresh > 127 || fresh < -128) return 0;
+                    replay[off + len - 1] = (unsigned char)fresh;
+                }
+            }
+        }
+        off += len;
+    }
+    return 1;
+}
+
 static int install_hook(void *target)
 {
     DWORD old;
@@ -1779,6 +1822,8 @@ static int install_hook(void *target)
         g_hookCount++;
         for (n = 0; n < displaced; n++) g_replay[n] = at[n];
     }
+    if (!fix_replay(at, g_replay, displaced)) return 0;
+    n = 0;
     g_replay[displaced] = 0xE9;
     {
         long rel = (long)(at + displaced - (g_replay + displaced + 5));

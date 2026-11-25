@@ -45,17 +45,29 @@
 #define L_CI 0x58
 #define L_GLOBAL 0x68
 
+#ifndef UMBRA_HOST
+/* in the shipped build there is no lua.h: the state is opaque and the API arrives as
+   function pointers from the scan. The harness includes the real header instead. */
 typedef void *lua_State;
+#endif
 typedef int (*luau_load_t)(lua_State *, const char *, const char *, size_t, int);
+/* Luau >=0.6 splits the two: compile source to bytecode, then load the bytecode. The bytecode
+   buffer is malloc'd by Luau and deliberately leaked here (a few KB, once per inject) because
+   freeing it would cross CRTs. */
+typedef char *(*luau_compile_t)(const char *, size_t, void *, size_t *);
 typedef int (*lua_pcall_t)(lua_State *, int, int, int);
-typedef void *(*lua_pushcclosure_t)(lua_State *, void *, int);
+/* Luau's newer ABI takes (L, fn, debugname, nup, cont) and tonumber takes (L, idx, isnum).
+   We always pass the full argument list: on Win64 the extra registers are ignored by a
+   shorter callee, so this is safe for both variants instead of guessing which one is in the
+   client. */
+typedef void *(*lua_pushcclosure_t)(lua_State *, void *, const char *, int, void *);
 typedef const char *(*lua_tolstring_t)(lua_State *, int, size_t *);
 typedef void (*lua_pushlstring_t)(lua_State *, const char *, size_t);
 typedef void (*lua_createtable_t)(lua_State *, int, int);
 typedef void (*lua_setfield_t)(lua_State *, int, const char *);
 typedef void (*lua_pushnumber_t)(lua_State *, double);
 typedef void (*lua_pushboolean_t)(lua_State *, int);
-typedef double (*lua_tonumber_t)(lua_State *, int);
+typedef double (*lua_tonumber_t)(lua_State *, int, int *);
 typedef int (*lua_gettop_t)(lua_State *);
 typedef void (*lua_rawseti_t)(lua_State *, int, int);
 
@@ -69,6 +81,7 @@ typedef struct {
     size_t imageSize;
     lua_State *state;
     luau_load_t load;
+    luau_compile_t compile;
     lua_pcall_t pcall;
     lua_pushcclosure_t pushcclosure;
     lua_pushlstring_t pushls;
@@ -88,7 +101,7 @@ typedef struct {
 static core_state g;
 static const char *find_text(const char *haystack, const char *needle);
 static void push_bus(lua_State *state);
-static void push_bridge(lua_State *state);
+static void push_bridge(lua_State *state, const char *apiSource);
 static int resolve(void);
 static char g_stage[32] = "start";
 
@@ -249,41 +262,51 @@ static lua_State *state_from_scriptcontext(void)
     return 0;
 }
 
+/* source -> bytecode -> closure. Returns the same codes as luau_load so callers stay simple. */
+static int load_source(lua_State *state, const char *chunkname, const char *source)
+{
+    size_t size = 0;
+    char *bytecode;
+    int status;
+    if (!g.compile) return -1;
+    bytecode = g.compile(source, lstrlenA(source), 0, &size);
+    if (!bytecode || size == 0) return -1;
+    status = g.load(state, chunkname, bytecode, size, 0);
+    return status;
+}
+
 static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
 {
-    /* one native call in: the runner pumps itself from Heartbeat afterwards.
-       stack: [api] [runner] [bus] [bridge] -> pcall(runner, 3 args) */
-    if (!state || !g.load || !g.pcall || !g.createtable) {
+    /* One native call in; the runner pumps itself from Heartbeat afterwards.
+         push bridge (with the api source inside) -> [bridge]
+         load runner                             -> [bridge, runner]
+         push bus                                -> [bridge, runner, bus]
+         pcall(2)                                -> runner(bridge, bus)
+       The runner compiles api.luau through the bridge, so nothing has to be passed as a
+       second call argument: an api table pushed before the runner would sit below it and
+       pcall would try to call the table (which is exactly what the harness caught). */
+    if (!state || !g.load || !g.compile || !g.pcall || !g.createtable) {
         fail("resume", "no state or no luau surface");
         return;
     }
-    if (!apiChunk) {
-        fail("compile", "api.luau missing");
+    if (!chunk) {
+        fail("compile", "runner.luau missing");
         return;
     }
     UMBRA_TRY {
-        if (g.load(state, apiChunk, "@Umbra/api", lstrlenA(apiChunk), 0) != 0) {
-            fail("compile", g.tolstring ? g.tolstring(state, -1, 0) : "api did not compile");
-            return;
-        }
-        if (g.pcall(state, 0, 1, 0) != 0) {
-            fail("resume", g.tolstring ? g.tolstring(state, -1, 0) : "api did not load");
-            return;
-        }
-        if (g.load(state, chunk, "@Umbra/runner", lstrlenA(chunk), 0) != 0) {
+        push_bridge(state, apiChunk);
+        if (load_source(state, "@Umbra/runner", chunk) != 0) {
             fail("compile", g.tolstring ? g.tolstring(state, -1, 0) : "runner did not compile");
             return;
         }
         push_bus(state);
-        push_bridge(state);
-        if (g.pcall(state, 3, 0, 0) != 0)
+        if (g.pcall(state, 2, 0, 0) != 0)
             fail("resume", g.tolstring ? g.tolstring(state, -1, 0) : "runner did not start");
     }
     UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
         fail("resume", "structured exception while starting the runner");
     }
 }
-
 
 /* ------------------------------------------------------------------ bridges
  * Every bridge is a C closure taking its arguments off the stack by index and pushing one
@@ -550,8 +573,8 @@ static int cb_request(lua_State *state)
 /* ------------------------------------------------------------------ input */
 static int cb_mousemoverel(lua_State *state)
 {
-    double dx = g.tonumber ? g.tonumber(state, 1) : 0;
-    double dy = g.tonumber ? g.tonumber(state, 2) : 0;
+    double dx = g.tonumber ? g.tonumber(state, 1, 0) : 0;
+    double dy = g.tonumber ? g.tonumber(state, 2, 0) : 0;
     INPUT input;
     input.type = INPUT_MOUSE;
     input.mi.dx = (LONG)dx;
@@ -634,6 +657,26 @@ static int cb_setclipboard(lua_State *state)
     return 0;
 }
 
+/* chunk loader for Luau: (source) -> function | nil, err */
+static int cb_loadstring(lua_State *state)
+{
+    char *source;
+    size_t size = 0;
+    char *bytecode;
+    size_t length = 0;
+    const char *text = g.tolstring ? g.tolstring(state, 1, &length) : 0;
+    if (!text || !g.compile || !g.load) return failarg(state, "loadstring unavailable"), 2;
+    source = (char *)VirtualAlloc(0, length + 1, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!source) return failarg(state, "no memory"), 2;
+    for (size_t i = 0; i < length; i++) source[i] = text[i];
+    source[length] = 0;
+    bytecode = g.compile(source, length, 0, &size);
+    VirtualFree(source, 0, MEM_RELEASE);
+    if (!bytecode || size == 0) return failarg(state, "compile failed"), 2;
+    if (g.load(state, "@Umbra/chunk", bytecode, size, 0) != 0) return 1;   /* nil, err */
+    return 1;
+}
+
 static int cb_windowactive(lua_State *state)
 {
     HWND foreground = GetForegroundWindow();
@@ -653,8 +696,8 @@ static int cb_bus_push(lua_State *state)
     bus_header *header = (bus_header *)g.bus;
     char *slot;
     char text[512];
-    unsigned int kind = g.tonumber ? (unsigned int)g.tonumber(state, 1) : 4;
-    unsigned int id = g.tonumber ? (unsigned int)g.tonumber(state, 2) : 0;
+    unsigned int kind = g.tonumber ? (unsigned int)g.tonumber(state, 1, 0) : 4;
+    unsigned int id = g.tonumber ? (unsigned int)g.tonumber(state, 2, 0) : 0;
     unsigned int length;
     if (!header) return 0;
     if (!argstr(state, 3, text, sizeof(text))) text[0] = 0;
@@ -671,7 +714,7 @@ static int cb_bus_push(lua_State *state)
 static int cb_bus_take(lua_State *state)
 {
     bus_header *header = (bus_header *)g.bus;
-    unsigned int limit = g.tonumber ? (unsigned int)g.tonumber(state, 1) : 8;
+    unsigned int limit = g.tonumber ? (unsigned int)g.tonumber(state, 1, 0) : 8;
     unsigned int count = 0;
     if (!header || !g.createtable) return 0;
     g.createtable(state, 0, 0);
@@ -706,7 +749,7 @@ static int cb_bus_stop(lua_State *state)
 /* ------------------------------------------------------------------ registration */
 static void field(lua_State *state, const char *name, void *function)
 {
-    g.pushcclosure(state, function, 0);
+    g.pushcclosure(state, function, 0, 0, 0);
     g.setfield(state, -2, name);
 }
 
@@ -718,7 +761,7 @@ static void push_bus(lua_State *state)
     field(state, "stop", (void *)cb_bus_stop);
 }
 
-static void push_bridge(lua_State *state)
+static void push_bridge(lua_State *state, const char *apiSource)
 {
     const char *version = "0.1.0";
     g.createtable(state, 0, 24);
@@ -736,6 +779,11 @@ static void push_bridge(lua_State *state)
     field(state, "keyrelease", (void *)cb_keyrelease);
     field(state, "setclipboard", (void *)cb_setclipboard);
     field(state, "windowActive", (void *)cb_windowactive);
+    field(state, "loadstring", (void *)cb_loadstring);
+    if (apiSource) {
+        g.pushls(state, apiSource, lstrlenA(apiSource));
+        g.setfield(state, -2, "apiSource");
+    }
     g.pushls(state, version, lstrlenA(version));
     g.setfield(state, -2, "version");
 }

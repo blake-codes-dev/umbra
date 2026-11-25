@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Build and run the native harness under wine.
+# Needs: mingw gcc/g++, a Windows Luau static build, wine. See tests/README.md.
+#   LUAU_BUILD=/tmp/luaub LUAU_SRC=/tmp/luau tools/test_native.sh
+set -euo pipefail
+cd "$(dirname "$0")/.."
+LUAU_BUILD="${LUAU_BUILD:-/tmp/luaub}"
+LUAU_SRC="${LUAU_SRC:-/tmp/luau}"
+OUT="dist/test"
+mkdir -p "$OUT"
+
+if [ ! -f "$LUAU_BUILD/libLuau.VM.a" ]; then
+  echo "no Luau build at $LUAU_BUILD - see tests/README.md"
+  exit 1
+fi
+
+# Luau's VM is C++ with mangled names, so the harness compiles as C++ too; core.c is
+# included from it so the same source that ships is the one under test
+x86_64-w64-mingw32-g++ -std=c++17 -O1 -g -DUMBRA_HOST \
+  -I"$LUAU_SRC/VM/include" -I"$LUAU_SRC/Compiler/include" \
+  -I"$LUAU_SRC/Common/include" -I"$LUAU_SRC/Ast/include" \
+  -x c++ tests/host.c -x none \
+  "$LUAU_BUILD/libLuau.Compiler.a" "$LUAU_BUILD/libLuau.Ast.a" \
+  "$LUAU_BUILD/libLuau.Bytecode.a" \
+  "$LUAU_BUILD/libLuau.VM.a" "$LUAU_BUILD/libLuau.Common.a" \
+  -lstdc++ -lwinhttp -luser32 -static -o "$OUT/host.exe"
+
+WINEPREFIX=/config/.wx DISPLAY=:1.0 /usr/lib/wine/wine64 "$OUT/host.exe"

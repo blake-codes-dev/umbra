@@ -1,4 +1,4 @@
-#!nocheck
+--!nocheck
 -- Umbra executor API, written in Luau because that is where it is cheap.
 --
 -- Native supplies three bridges: `__umbraFile`, `__umbraHttp`, `__umbraInput`.
@@ -10,7 +10,13 @@ local api = {}
 -- the runner hands the native table over before any env is built
 function api.bind(native)
     bridge = native
-    return api
+    -- the native side reads this back off the bridge so the runner can find the api without the
+-- table having to travel as a call argument (it would sit below the runner on the stack)
+if type(bridge) == "table" then
+    bridge.API = api
+end
+
+return api
 end
 
 local function need(name, fn)
@@ -62,7 +68,13 @@ api.hookfunction = function(target, hook)
         local _, value = getupvalue(hook, index)
         setupvalue(target, index, value)
     end
-    return api.clonefunction(target)
+    -- the native side reads this back off the bridge so the runner can find the api without the
+-- table having to travel as a call argument (it would sit below the runner on the stack)
+if type(bridge) == "table" then
+    bridge.API = api
+end
+
+return api.clonefunction(target)
 end
 
 api.hookmetamethod = function(object, method, hook)
@@ -146,11 +158,23 @@ api.request = need("request", bridge and bridge.request or nil)
 api.httpget = need("httpget", bridge and bridge.httpget or nil)
 
 api.HttpGet = function(url)
-    return api.httpget(url)
+    -- the native side reads this back off the bridge so the runner can find the api without the
+-- table having to travel as a call argument (it would sit below the runner on the stack)
+if type(bridge) == "table" then
+    bridge.API = api
+end
+
+return api.httpget(url)
 end
 
 api.HttpPost = function(url, body, contentType)
-    return api.request({ Url = url, Method = "POST", Body = body, Headers = { ["Content-Type"] = contentType } })
+    -- the native side reads this back off the bridge so the runner can find the api without the
+-- table having to travel as a call argument (it would sit below the runner on the stack)
+if type(bridge) == "table" then
+    bridge.API = api
+end
+
+return api.request({ Url = url, Method = "POST", Body = body, Headers = { ["Content-Type"] = contentType } })
 end
 
 -- ---------------------------------------------------------------- misc
@@ -192,6 +216,12 @@ function api.install(env, extra)
         for name, value in pairs(extra) do rawset(env, name, value) end
     end
     return env
+end
+
+-- the native side reads this back off the bridge so the runner can find the api without the
+-- table having to travel as a call argument (it would sit below the runner on the stack)
+if type(bridge) == "table" then
+    bridge.API = api
 end
 
 return api

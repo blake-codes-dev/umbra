@@ -3,7 +3,8 @@
   "measure the 12 unmeasured anchors live (luau_load, lua_pcall, the push/pop set): they are the only things between here and a first chunk running",
   "signals: getconnections needs the connection table walk; do it after a chunk runs so the loop is small",
   "assert a TString push on the found state before any reload (top must move by 16, base unchanged)",
-  "menu: keep the shipped scripts on the newest client version and re-check each one"
+  "menu: keep the shipped scripts on the newest client version and re-check each one",
+  "after this ships: Fortnite mod menu as a second product (UE/UObject side, shared store+updater, see the queue note)"
  ],
  "blocked": ["live measurement needs the windows box; this container has no Roblox"],
  "updated": "2026-11-25T01:15:00"

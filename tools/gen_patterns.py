@@ -11,7 +11,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WANTED = [
-    "lua_pcall", "luau_load", "lua_pushcclosure", "lua_createtable", "lua_setfield",
+    "lua_pcall", "luau_load", "luau_compile", "lua_pushcclosure", "lua_createtable", "lua_setfield",
     "lua_rawseti", "lua_pushlstring", "lua_pushnumber", "lua_pushboolean", "lua_tolstring",
     "lua_tonumber", "lua_gettop", "luau_execute_dispatch", "luaG_runerror",
 ]

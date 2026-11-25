@@ -1,12 +1,19 @@
-#!nocheck
+--!nocheck
 -- Umbra runner. The only chunk native code ever calls: `task.spawn(runnerChunk)`.
 -- Everything after that is Luau, inside the client's own scheduler, so no yield ever
 -- crosses a native frame. See docs/protocol.md for the bus layout this drains.
 
 local RunService = game:GetService("RunService")
 
-local API, BUS, BRIDGE = ...
-if API and BRIDGE and API.bind then API.bind(BRIDGE) end
+local BRIDGE, BUS = ...
+-- api.luau travels as source inside the bridge and is compiled here, so the only native call
+-- is the one that starts this chunk
+local API
+do
+    local chunk, loadError = BRIDGE.loadstring(BRIDGE.apiSource)
+    if not chunk then error("umbra: api did not compile: " .. tostring(loadError)) end
+    API = chunk(BRIDGE)
+end
 local OP_EXEC = 1
 local OP_CANCEL = 2
 local OP_PROBE = 3

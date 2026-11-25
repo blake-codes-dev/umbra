@@ -11,6 +11,9 @@ static const unsigned char UMBRA_SIG_LUA_PCALL[] = { 0xCC };
 #define UMBRA_RVA_LUAU_LOAD 0x0u
 static const unsigned char UMBRA_SIG_LUAU_LOAD[] = { 0xCC };
 #define UMBRA_SIGLEN_LUAU_LOAD 0u
+#define UMBRA_RVA_LUAU_COMPILE 0x0u
+static const unsigned char UMBRA_SIG_LUAU_COMPILE[] = { 0xCC };
+#define UMBRA_SIGLEN_LUAU_COMPILE 0u
 #define UMBRA_RVA_LUA_PUSHCCLOSURE 0x0u
 static const unsigned char UMBRA_SIG_LUA_PUSHCCLOSURE[] = { 0xCC };
 #define UMBRA_SIGLEN_LUA_PUSHCCLOSURE 0u

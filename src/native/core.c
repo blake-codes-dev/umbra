@@ -2448,45 +2448,91 @@ static int sub_insn_len(const unsigned char *code)
     int i = 0;
     int rex = 0;
     unsigned char op;
-    int modrm = 0, mod, rm, disp = 0, imm = 0;
+    int modrm = 0, mod, rm, disp = 0, imm = 0, prefix66 = 0, rex_w = 0;
 
-    while (i < 4 && (code[i] == 0x66 || code[i] == 0x67 || code[i] == 0xF2 || code[i] == 0xF3))
+    while (i < 6 && (code[i] == 0x66 || code[i] == 0x67 || code[i] == 0xF2 || code[i] == 0xF3 ||
+                     code[i] == 0x2E || code[i] == 0x3E || code[i] == 0x26 || code[i] == 0x36 ||
+                     code[i] == 0x64 || code[i] == 0x65 || code[i] == 0xF0)) {
+        if (code[i] == 0x66) prefix66 = 1;
         i++;
-    if (i < 4 && code[i] >= 0x40 && code[i] <= 0x4F) { rex = 1; i++; }
+    }
+    if (i < 4 && code[i] >= 0x40 && code[i] <= 0x4F) { rex = 1; rex_w = (code[i] & 8) != 0; i++; }
     if (i >= 8) return 0;
     g_insn_rip = 0;
     op = code[i++];
 
     if (op >= 0x50 && op <= 0x5F) return i;                 /* push/pop reg */
     if (op == 0xC3 || op == 0xCC || op == 0x90 || op == 0xF8) return i;
-    if (op >= 0xB8 && op <= 0xBF) return i + (rex ? 8 : 4); /* mov reg, imm */
+    /* accumulator forms: AL/AX/EAX/RAX with an immediate and no ModRM. op&7 == 4 is the byte
+       form, == 5 the word/dword form, across add/or/adc/sbb/and/sub/xor/cmp. */
+    if (op <= 0x3D && (op & 7) == 4) return i + 1;
+    if (op <= 0x3D && (op & 7) == 5) return i + (prefix66 ? 2 : 4);
+    /* string ops carry no ModRM; A8/A9 are test al/eax, imm */
+    if (op >= 0xA4 && op <= 0xAF)
+        return i + (op == 0xA8 ? 1 : op == 0xA9 ? (prefix66 ? 2 : 4) : 0);
+    if (op == 0x3C || op == 0xA8) return i + 1;
+    if (op == 0x3D || op == 0xA9) return i + (prefix66 ? 2 : 4);
+    /* mov reg, imm is imm64 only with REX.W, not for any REX: 41 B8 is still 6 bytes */
+    if (op >= 0xB8 && op <= 0xBF) return i + (rex_w ? 8 : 4);
     if (op == 0xE8 || op == 0xE9) return i + 4;
     if (op == 0xEB) return i + 1;
+    /* short conditional jumps and loop/jrcxz: rel8, extremely common as a function's first
+       instruction, and there was no case for them at all */
+    if ((op >= 0x70 && op <= 0x7F) || (op >= 0xE0 && op <= 0xE3)) return i + 1;
     if (op == 0xF5 || op == 0xF8 || op == 0xF9 || op == 0xFC || op == 0xFD || op == 0x9C ||
-        op == 0x9D || op == 0x98 || op == 0x99 || op == 0x90) return i;      /* one byte */
+        op == 0x9D || op == 0x98 || op == 0x99 || op == 0x90 || op == 0x06 || op == 0x07 ||
+        op == 0x0E || op == 0x16 || op == 0x17 || op == 0x1E || op == 0x27 || op == 0x2F ||
+        op == 0x37 || op == 0x3F) return i;                                   /* one byte */
     if (op == 0x0F) {                                    /* SSE moves, compares, conversions */
         if (i >= 8) return 0;
         op = code[i++];
+        if (op >= 0x80 && op <= 0x8F) return i + 4;      /* near conditional jump, no ModRM */
+        if (op == 0x0B) return i;                        /* ud2 */
+        if (op == 0x38 || op == 0x3A) {                  /* three-byte maps: ModRM, then imm8 if 3A */
+            if (i >= 8) return 0;
+            i += 1;                                      /* the real opcode after the escape */
+            modrm = code[i++];
+            mod = (modrm >> 6) & 3;
+            rm = modrm & 7;
+            if (mod != 3) {
+                if (rm == 4) { unsigned char sib = code[i++]; if (mod == 0 && (sib & 7) == 5) i += 4; }
+                if (mod == 1) i += 1;
+                else if (mod == 2) i += 4;
+                else if (rm == 5 && mod == 0) { i += 4; g_insn_rip = 1; }
+            }
+            if (op == 0x3A) i += 1;
+            return i;
+        }
+        if (op >= 0xC8 && op <= 0xCF) return i;          /* bswap reg */
         /* Everything with a ModRM byte. Case by case was leaving holes (0F 10 movups was one),
            and this decoder only has to walk whole instructions, not name them. */
         if (op == 0x10 || op == 0x11 || (op >= 0x12 && op <= 0x17) || op == 0x28 || op == 0x29 ||
             op == 0x2A || op == 0x2C || op == 0x2D || op >= 0x2E && op <= 0x2F || op == 0x50 ||
             op == 0x51 || op == 0x52 || op == 0x53 || op == 0x54 || op == 0x55 || op == 0x56 ||
             op == 0x57 || op == 0x58 || op == 0x59 || op == 0x5A || op == 0x5B || op == 0x5C ||
-            op == 0x5D || op == 0x5E || op == 0x5F || op == 0x6E || op == 0x6F || op == 0x70 ||
+            op == 0x5D || op == 0x5E || op == 0x5F || op == 0x6C || op == 0x6D || op == 0x6E ||
+            (op >= 0x60 && op <= 0x6F) || op == 0x70 ||
             op == 0x71 || op == 0x72 || op == 0x73 || (op >= 0x74 && op <= 0x76) || op == 0x7E ||
             op == 0x7F || op == 0xC2 || op == 0xC4 || op == 0xC5 || op == 0xC6 || op == 0xD6 ||
-            op == 0xEF || op == 0xAE || op == 0xB6 || op == 0xB7 || op == 0xBE || op == 0xBF) {
+            op == 0xEF || op == 0xAE || op == 0x1F || op >= 0x90 && op <= 0x9F ||
+            (op >= 0x40 && op <= 0x4F) || op == 0xA3 || op == 0xAB || op == 0xAF || op == 0xB0 ||
+            op == 0xB1 || op == 0xB3 || op == 0xBB || op == 0xBC || op == 0xBD || op == 0xC7 ||
+            op == 0xB6 || op == 0xB7 || op == 0xBA || op == 0xBE || op == 0xBF || (op >= 0xD0 && op <= 0xFF)) {
             if (i >= 8) return 0;
             modrm = code[i++];
             mod = (modrm >> 6) & 3;
             rm = modrm & 7;
             if (mod != 3) {
-                if (rm == 4) i++;
+                if (rm == 4) {
+                    unsigned char sib = code[i++];
+                    if (mod == 0 && (sib & 7) == 5) i += 4;
+                }
                 if (mod == 1) i += 1;
                 else if (mod == 2) i += 4;
-                else if (rm == 5) { i += 4; g_insn_rip = 1; }
+                else if (rm == 5 && mod == 0) { i += 4; g_insn_rip = 1; }
             }
+            /* the shuffles and compare take an 8-bit control byte after the ModRM */
+            if ((op >= 0x70 && op <= 0x73) || op == 0xBA || op == 0xC2 || op == 0xC6) i += 1;
             return i;
         }
         return 0;
@@ -2494,24 +2540,39 @@ static int sub_insn_len(const unsigned char *code)
     if (op == 0x6A) return i + 1;
     if (op == 0x68) return i + 4;
     if (op == 0x8D || op == 0x89 || op == 0x8B || op == 0x31 || op == 0x33 || op == 0x85 ||
-        op == 0x3B || op == 0x01 || op == 0x03 || op == 0x29 || op == 0x2B || op == 0x39 ||
-        op == 0x83 || op == 0x81 || op == 0xC7 || op == 0xFF || op == 0xF7 || op == 0x2D ||
-        op == 0xC1 || op == 0xC0 || op == 0xD3 ||
-        op == 0x05) {
+        op == 0x63 || (op <= 0x3D && (op & 7) != 4 && (op & 7) != 5) ||
+        (op >= 0x62 && op <= 0x6B) ||
+        op == 0x8D || op == 0x81 || op == 0x83 ||
+        op == 0x86 || op == 0x87 ||
+        op == 0x84 || op == 0x85 || op == 0x88 || op == 0x89 || op == 0x8A || op == 0x8B ||
+        op == 0xC6 || op == 0xC7 ||
+        (op >= 0xD0 && op <= 0xD3) || (op >= 0xD8 && op <= 0xDF) || op == 0xF6 || op == 0xF7 ||
+        op == 0xFE || op == 0xFF || op == 0x80 || op == 0x82 ||
+        op == 0xC1 || op == 0xC0 || op == 0xD3) {
         if (i >= 8) return 0;
         modrm = code[i++];
         mod = (modrm >> 6) & 3;
         rm = modrm & 7;
         if (mod != 3) {
-            if (rm == 4) { i++; }                            /* sib */
+            if (rm == 4) {                                   /* sib */
+                unsigned char sib = code[i++];
+                if (mod == 0 && (sib & 7) == 5) disp = 4;    /* absolute, not rip-relative */
+            }
             if (mod == 1) disp = 1;
             else if (mod == 2) disp = 4;
-            else if (rm == 5) { disp = 4; g_insn_rip = 1; }  /* rip-relative */
+            else if (rm == 5 && mod == 0) { disp = 4; g_insn_rip = 1; }  /* rip-relative */
         }
         i += disp;
         if (op == 0x83 || op == 0xC1 || op == 0xC0) imm = 1;
-        else if (op == 0x81 || op == 0xC7 || op == 0xF7) imm = 4;
-        else if (op == 0x05) imm = 4;
+        else if (op == 0x81 || op == 0xC7) imm = prefix66 ? 2 : 4;
+        else if (op == 0xC6 || op == 0x6B || op == 0x80 || op == 0x82) imm = 1;
+        else if (op >= 0x70 && op <= 0x73) imm = 1;                 /* pshuf*/
+        else if (op == 0x69) imm = prefix66 ? 2 : 4;
+        /* the group number is the reg field, not the rm field */
+        else if (op == 0xF6) imm = ((modrm >> 3) & 7) <= 1 ? 1 : 0;
+        else if (op == 0xF7) imm = ((modrm >> 3) & 7) <= 1 ? (prefix66 ? 2 : 4) : 0;
+        else if (op == 0x05 || op == 0x0D || op == 0x15 || op == 0x1D || op == 0x25 ||
+                 op == 0x2D || op == 0x35 || op == 0x3D) imm = prefix66 ? 2 : 4;  /* accumulator */
         return i + imm;
     }
     return 0;

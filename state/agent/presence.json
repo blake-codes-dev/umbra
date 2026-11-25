@@ -1,18 +1,18 @@
 {
  "container": {
-  "at": 1795615691.1929307,
-  "iso": "2026-11-25T14:08:11Z",
-  "note": "documented mingw SEH gap; harness covers decode/patch only",
+  "at": 1795615755.1105762,
+  "iso": "2026-11-25T14:09:15Z",
+  "note": "decoder covers SSE range; proposed print-hook as state channel",
   "state": "working",
-  "alerted": false,
-  "beats": 16
+  "alerted": true,
+  "beats": 17
  },
  "windows": {
   "at": 1795614841.399289,
   "iso": "2026-11-25T13:54:01Z",
   "note": "\"acg+cfg measured; client survives entry; patches never fire on a server\"",
   "state": "working",
-  "alerted": false,
+  "alerted": true,
   "beats": 7
  }
 }

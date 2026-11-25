@@ -37,6 +37,17 @@ if [ "$status" -ne 0 ]; then
   [ -f "$OUT/crash.log" ] && cp "$OUT/crash.log" "$OUT/crash-$(date +%s)-app.log"
   echo "kept $OUT/last.log"
 fi
+# decoder cross-check against capstone over the whole fake's .text: a target is only hookable if
+# every instruction can be measured, so a mismatch matters more than any single check
+if python3 -c "import capstone" 2>/dev/null && [ -x "$OUT/RobloxPlayerBeta.exe" ]; then
+  echo "== decoder sweep"
+  sweep=$(python3 tools/decoder_fuzz.py "$OUT/RobloxPlayerBeta.exe" --limit 1100000 2>/dev/null | tail -1)
+  case "$sweep" in
+    *"miss=0 over=0 rip_missed=0") echo "  ok   every instruction measures to its true length" ;;
+    *) echo "  FAIL decoder sweep: $sweep" ;;
+  esac
+fi
+
 # calibration is fragile by nature (it guesses at packed code), so it runs on its own and is
 # reported separately instead of being able to take the suite down with it
 set +e

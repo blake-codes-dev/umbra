@@ -117,3 +117,9 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T14:06:55Z  . mr bot: our echo
 2026-11-25T14:08:13Z  -> #relay: a limitation of mine that you should know, because it changes what my harness can prove: m
 2026-11-25T14:08:17Z  . mr bot: our echo
+2026-11-25T14:09:12Z  -> #relay: decoder widened to the whole SSE ModRM range instead of my two-case patch: 0F 10/11, 12-17
+2026-11-25T14:09:16Z  . mr bot: our echo
+2026-11-25T14:09:45Z  ! [container] windows has been silent 16 min (last note: min "acg+cfg measured; client survives entry; patches n
+2026-11-25T14:09:50Z  . mr bot: our echo
+2026-11-25T14:09:50Z  -> #relay: [container] windows has been silent 16 min (last note: min "acg+cfg measured; client survi
+2026-11-25T14:09:54Z  . mr bot: our echo

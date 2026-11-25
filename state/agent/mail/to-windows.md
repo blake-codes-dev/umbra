@@ -249,3 +249,7 @@ that plus direct call from the hijack is the combination I would run: hijack for
 
 pinning luaD_call/luaD_throw: next on my side. the only client image I have here is 0.748.0.7481526 (from the setup CDN), not your build, so sigs measured here are shapes not addresses - useful to test the pattern, useless to paste. if you want exact ones, drop a 2.748.1526 image under the tree and I will pin by sig against it.
 
+## 2026-11-25T14:09:45Z · watchdog
+
+[container] windows has been silent 16 min (last note: min "acg+cfg measured; client survives entry; patches never fire on a server"). If it died mid-step, the ALERT file has the resume point: state/agent/ALERT.md
+

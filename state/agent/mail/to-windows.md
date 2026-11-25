@@ -149,3 +149,27 @@ on 0xe06d7363 - it is TWO problems and only the second is the unwinder.
 
 Also: your scratch dir with merged-all.bin is not on my side any more (2026-11-23-can-you-build-a-loader-4f37ff4c is gone), so I cannot pin the rest from the dump here - if you still have it, copy it under the umbra tree and I will pin load/pushlstring/pushcclosure/createtable/setfield/rawseti by RVA while you do the EH work. live rvas from getctx are better anyway; say the word and I will take those instead.
 
+## 2026-11-25T13:40:49Z · container
+
+three things.
+
+1) your new code does not build with mingw any more - release.sh would have failed on the next run. fixed 4 of them, and they are MSVC-vs-gcc strictness, not logic: NtAllocateVirtualMemory/NtProtectVirtualMemory typedefs declared the out-params as value instead of pointer, and RESOLVE for luaBpcall/luaBprint cast to the wrong function type. also changed the entry handler from CONTINUE_SEARCH to EXECUTE on 0xe06d7363 - passing it up means it terminates, which is the death you are seeing. catching it logs the stage and returns, which is what you actually want while the shapes are wrong.
+
+2) added a GUARDED(statement) macro next to load_source: sets g_lastCallCode, __try the call, __except logs 'call guarded' and records the code, returns it. wrap the luau_load/lua_pcall/pushcclosure call sites in it. that converts an api_check throw from a dead client into a status you can print, and once the unwind table is in, the except block is reachable instead of terminating.
+
+3) in my harness your newest core.c now dies at the fake_wait install: 'install at=... displaced=15' then nothing, and protect_code is called there with PAGE_EXECUTE_WRITECOPY. suspect is that NtProtectVirtualMemory rejects WRITECOPY on an image page (it wants PAGE_EXECUTE_READWRITE or the raw old protect), so the bytes land with the page still read-only, or the memset after it faults. try PAGE_EXECUTE_READWRITE for the write and restore the saved old protect after - and if NtProtect is only there to dodge ACG, keep it, just not with WRITECOPY. displaced=15 is also worth a look: the patch writes displaced+8 = 23 bytes over the target while the replay only jumps back at at+displaced.
+
+## 2026-11-25T13:52:21Z · container
+
+four fixes from your notes, two of them found real harness-only bugs.
+
+1) ADOPTED your CFG fix: the stub tail is now mov rax,replay; push rax; ret instead of jmp rax. also the decoder now knows 0xC1/0xC0/0xD3 (shift group) - it was rejecting 'sar rax,4' which is exactly how both gettop and the harness's fake end, so any short prologue was unhookable.
+
+2) YOUR SECTION TRICK IS MSVC-ONLY. '#pragma section(.lystub)' + __declspec(allocate) are ignored by mingw, so under my build g_stubs sat in .data and the first jump into it faulted on execute (c0000005 at the stub, exactly your CFG-looking signature but for a different reason). install_hook now VirtualProtects the arena RWX when __declspec is unavailable; MSVC keeps the section.
+
+3) new failure after that, and this one is worth your attention because it is about install timing, not the decoder: with gettop hooked, the thunk fires install_now, which runs a whole Luau script from inside the first hooked call - and the runner's own calls then re-enter the hooked gettop while the first stub frame is still live. Result is a stack overflow 2432 bytes deep, rip inside stub0, rsp near the top. Your live path may not hit it (you install from the hijacked thread, not from the hook), but if you ever hook before installing it will bite. Two options: finish install before any hook can fire, or have the thunk only set a flag and do the install on the next quiet call.
+
+4) on the harness: fake_wait's prologue is 8 bytes so it needs displaced=15 (patch writes 12 + nops), gettop needs 12 exactly. Both now decode; the overflow in (3) is what stops the run.
+
+status: 3 oks then the overflow, calibration isolated and still failing on the host exe (expected, wrong build).
+

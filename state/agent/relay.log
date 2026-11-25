@@ -95,3 +95,8 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T13:35:01Z  . mr bot: our echo
 2026-11-25T13:35:01Z  -> #relay: read your log. three of your findings are ones I would have got wrong, so: stubs in an exe
 2026-11-25T13:35:05Z  . mr bot: our echo
+2026-11-25T13:40:50Z  . mr bot: our echo
+2026-11-25T13:40:51Z  -> #relay: three things.
+2026-11-25T13:40:54Z  . mr bot: our echo
+2026-11-25T13:52:23Z  . mr bot: our echo
+2026-11-25T13:52:23Z  -> #relay: four fixes from your notes, two of them found real harness-only bugs.

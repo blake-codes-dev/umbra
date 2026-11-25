@@ -323,6 +323,21 @@ public sealed class Injector
                     else Console.WriteLine($"  {section.Name} query failed");
                 }
 
+                /* a thread of our own is deterministic; hyperion may reap it, so it is only the
+                   first try and the client's own threads/apcs are the fallback */
+                var threadOwn = CreateRemoteThread(process, IntPtr.Zero, UIntPtr.Zero, start,
+                    IntPtr.Zero, 0, out _);
+                if (threadOwn != IntPtr.Zero)
+                {
+                    for (var spin = 0; spin < 50; spin++)
+                    {
+                        if (PipeMark(pid)) break;
+                        Thread.Sleep(100);
+                    }
+                    CloseHandle(threadOwn);
+                }
+                if (PipeMark(pid)) return new(true, "own thread", pid);
+
                 /* client threads and apcs, never a thread of our own: hyperion kills those */
                 var queued = Injector.QueueToThreads(process, start);
                 var hijacked = Injector.HijackThreads(process, start, 3);
@@ -405,16 +420,19 @@ public sealed class Injector
             {
                 var client = PeImage.RemoteModulePublic(handle, "RobloxPlayerBeta.exe").ToInt64();
                 if (client == 0) return;
-                var seen = new HashSet<long>();
-                var stop = Environment.TickCount64 + 600_000;
+                var applied = new List<(long Rva, byte[] Data)>();
+                var stop = Environment.TickCount64 + 1_800_000;
                 while (Environment.TickCount64 < stop)
                 {
                     try
                     {
-                        foreach (var line in File.ReadAllLines(path)) ApplyPatch(handle, client, line, seen);
+                        foreach (var line in File.ReadAllLines(path)) Remember(client, line, applied);
                     }
                     catch (IOException) { }
                     catch (UnauthorizedAccessException) { }
+                    /* hyperion re-arms and restores its pages, which drops the patch; the bytes are
+                       compared every pass and written again when the original is back */
+                    foreach (var (rva, data) in applied) Land(handle, client, rva, data);
                     Thread.Sleep(120);
                 }
             }
@@ -422,16 +440,26 @@ public sealed class Injector
         });
     }
 
-    private static void ApplyPatch(IntPtr handle, long client, string line, HashSet<long> seen)
+    private static void Remember(long client, string line, List<(long Rva, byte[] Data)> applied)
     {
         var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 2) return;
         if (!long.TryParse(parts[0], System.Globalization.NumberStyles.HexNumber, null, out var rva)) return;
-        if (!seen.Add(rva)) return;
         byte[] data;
         try { data = Convert.FromHexString(parts[1]); } catch (FormatException) { return; }
         if (data.Length == 0 || data.Length > 32) return;
-        var at = (IntPtr)(client + rva);
+        foreach (var a in applied) if (a.Rva == rva) return;
+        applied.Add((rva, data));
+        Console.WriteLine($"  patch request {rva:x} {Convert.ToHexString(data)}");
+    }
+
+    private static void Land(IntPtr handle, long client, long rva, byte[] data)
+    {
+        var at0 = (IntPtr)(client + rva);
+        var check = new byte[data.Length];
+        if (ReadProcessMemory(handle, at0, check, (UIntPtr)check.Length, out _) &&
+            check.AsSpan().SequenceEqual(data)) return;
+        var at = at0;
         /* the patch reaches the stub with an indirect jmp; under control flow guard a private
            target has to be declared valid or the first call fast-fails */
         if (data.Length >= 12)
@@ -450,16 +478,7 @@ public sealed class Injector
         if (ok) FlushInstructionCache(handle, at, (UIntPtr)data.Length);
         VirtualProtectEx(handle, at, (UIntPtr)data.Length, PageExecuteRead, out _);
         Console.WriteLine($"  patch {rva:x} {(ok ? "ok" : "fail " + Marshal.GetLastWin32Error())}");
-        var back = new byte[16];
-        if (ok && ReadProcessMemory(handle, at, back, (UIntPtr)back.Length, out _))
-            Console.WriteLine($"  at {rva:x} now {Convert.ToHexString(back)}");
-        if (ok && data.Length >= 12 && LongFrom(data, 2) is long stub && stub != 0)
-        {
-            var code = new byte[40];
-            if (ReadProcessMemory(handle, (IntPtr)stub, code, (UIntPtr)code.Length, out _))
-                Console.WriteLine($"  stub {stub:x} {Convert.ToHexString(code)}");
-            else Console.WriteLine($"  stub {stub:x} unreadable");
-        }
+        if (!ok) Console.WriteLine($"  patch {rva:x} failed {Marshal.GetLastWin32Error()}");
     }
 
     [StructLayout(LayoutKind.Sequential)]

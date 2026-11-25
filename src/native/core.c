@@ -2315,14 +2315,23 @@ static unsigned char *g_hookArena;   /* next free stub slot; each hook owns 256 
 /* A 12-byte absolute jump reaches anywhere, so the stubs do not have to be allocated: they sit in
    our own image, which is committed before the client can exhaust its commit limit. */
 static int g_stubsReady;
+static DWORD wasArena;
 #define DRY_PATCH 0
 #define HOOK_SLOT 256
 #define HOOK_SLOTS (4096 / HOOK_SLOT)
 /* Arbitrary Code Guard is on in the client ("the operation was blocked as the process prohibits
    dynamic code generation"), so a private page can never be made executable. A page in our own
    image can be, and if the section arrives executable it needs no protection change at all. */
+#ifdef _MSC_VER
 #pragma section(".lystub", execute, read, write)
 __declspec(allocate(".lystub")) static unsigned char g_stubs[HOOK_SLOTS * HOOK_SLOT];
+#define STUB_ARENA_OK 1
+#else
+/* mingw ignores #pragma section and __declspec(allocate), so g_stubs would sit in .data and the
+   first jump into it would fault on execute. A private page is right for the harness. */
+static unsigned char g_stubs[HOOK_SLOTS * HOOK_SLOT];
+#define STUB_ARENA_OK 0
+#endif
 
 /* one record per live hook: re-installing on the same target must rebuild from the *original*
    bytes, because at that point the first bytes are our own E9 and replaying those would jump to
@@ -2412,6 +2421,7 @@ static int sub_insn_len(const unsigned char *code)
     if (op == 0x8D || op == 0x89 || op == 0x8B || op == 0x31 || op == 0x33 || op == 0x85 ||
         op == 0x3B || op == 0x01 || op == 0x03 || op == 0x29 || op == 0x2B || op == 0x39 ||
         op == 0x83 || op == 0x81 || op == 0xC7 || op == 0xFF || op == 0xF7 || op == 0x2D ||
+        op == 0xC1 || op == 0xC0 || op == 0xD3 ||
         op == 0x05) {
         if (i >= 8) return 0;
         modrm = code[i++];
@@ -2424,7 +2434,7 @@ static int sub_insn_len(const unsigned char *code)
             else if (rm == 5) { disp = 4; g_insn_rip = 1; }  /* rip-relative */
         }
         i += disp;
-        if (op == 0x83) imm = 1;
+        if (op == 0x83 || op == 0xC1 || op == 0xC0) imm = 1;
         else if (op == 0x81 || op == 0xC7 || op == 0xF7) imm = 4;
         else if (op == 0x05) imm = 4;
         return i + imm;
@@ -2596,7 +2606,11 @@ static int install_hook(void *target)
             char *o = line;
             const char *q = "ih bad insn ";
             while (*q) *o++ = *q++;
-            for (int k = 0; k < 8; k++) { *o++ = hexd[head[k] >> 4]; *o++ = hexd[head[k] & 15]; }
+            for (int k = 0; k < 8; k++) { *o++ = hexd[head[displaced + k] >> 4];
+                                          *o++ = hexd[head[displaced + k] & 15]; }
+            *o++ = '@';
+            *o++ = hexd[(int)((unsigned __int64)(at + displaced) >> 60) & 15];
+            *o++ = hexd[(int)((unsigned __int64)(at + displaced) >> 56) & 15];
             *o = 0;
             put(line);
             return 0;
@@ -2609,6 +2623,12 @@ static int install_hook(void *target)
     if (!g_stubsReady) {
         g_stubsReady = 1;
         put("ih stubs ready");
+#if !STUB_ARENA_OK
+        if (!VirtualProtect(g_stubs, sizeof(g_stubs), PAGE_EXECUTE_READWRITE, &wasArena)) {
+            put("ih arena not executable");
+            return 0;
+        }
+#endif
     }
     g_trampoline = g_stubs;
 
@@ -2714,7 +2734,7 @@ patch_target:
         /* Only PAGE_EXECUTE_WRITECOPY is granted under code integrity, and the page has to be put
            back to what it was afterwards or the client later executes a copy-on-write page it does
            not expect. When even that is refused the request goes to the gui. */
-        if (protect_code(at, displaced + 8, PAGE_EXECUTE_WRITECOPY, &was)) {
+        if (protect_code(at, displaced + 8, PAGE_EXECUTE_READWRITE, &was)) {
             memcpy(at, patch, displaced);
             protect_code(at, displaced + 8, was ? was : PAGE_EXECUTE_READ, 0);
             how = 1;
@@ -2912,6 +2932,7 @@ static DWORD run_entry(void)
                 CloseHandle(h);
                 for (DWORD k = 0; k < got && num[k] >= '0' && num[k] <= '9'; k++)
                     g_stopAt = g_stopAt * 10 + (num[k] - '0');
+                if (got && (num[0] == 'd' || num[0] == 'D')) g_stopAt = -1;
             }
         }
     }
@@ -2982,6 +3003,12 @@ static DWORD run_entry(void)
         /* gettop is the trigger of choice: it is called constantly, it never throws, and it has no
            frame of its own, so replaying its prologue cannot disturb error handling. The trampoline
            page carries no unwind info, so a throwing function is the wrong place to stand in. */
+        /* stop.txt holding 'd' installs straight from the injected thread: nothing in a live
+           client calls the base library closures, so the hook trigger never fires */
+        else if (g_stopAt < 0) {
+            put("direct install");
+            install_now(0);
+        }
         else if (put("m8 runner read"),
                  (put("h1"), g.luaBpcall && install_hook((void *)g.luaBpcall)) ||
                  (put("h2"), g.luaBprint && install_hook((void *)g.luaBprint)) ||

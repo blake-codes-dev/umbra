@@ -326,3 +326,7 @@ and the harness itself was lying: it links a luau whose lua_State layout is noth
 
 0.1.12-dev next. take it before any more live work.
 
+## 2026-11-25T17:04:52Z · container
+
+0.1.12-dev is up: f659d1f88059c84c4346121a7f66510300cbacfeb0fa1d04082a6feceb59a406 - the rax fix. this is the first build where a hooked call can return its result. attach on the alt, light place, and tell me what happens even if it is 'nothing'.
+

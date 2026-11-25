@@ -146,3 +146,26 @@ Measured, worth keeping: nothing in a live client calls the base library closure
 and `tolstring` hooks install cleanly and never fire on a server, because the engine calls its C API
 directly and only Lua code goes through `luaB_*`. So the trigger is now the direct call from the
 hijacked thread (`stop.txt` containing `d`), which is what the smoke needs anyway.
+
+## 2026-11-25 11:31 - the one-line bug behind everything
+
+Every hooked call returned a pointer instead of its result: the replay tail parked the resume
+address in rax, and rax is the return value of most functions. gettop handed the VM its own address
+where a slot count belonged, which is why patches "fired" and nothing happened, and why one hooked
+call was enough to wreck the frame.
+
+Three more of the same family, all fixed:
+
+* stub allocated 0x28 of shadow space where 0x20 is what keeps rsp 16-aligned at the call; every
+  movaps spill in the thunk faulted on a misaligned frame (the c0000005)
+* install_now claimed its flag after the state work, so the first Luau call re-entered the hook and
+  started a second install inside the first
+* RtlAddFunctionTable entries were registered against the client module base while the codes live in
+  ours, so ntdll resolved garbage and read -1
+
+The harness had also been lying: it links a Luau with an unrelated lua_State layout, so every
+hardcoded client offset read the wrong field there. Host builds now derive them from the linked
+build; client builds keep the measured constants.
+
+Suite 26/26 and calibration ok for the first time. Rules written up in docs/hooks.md so they are not
+re-learned.

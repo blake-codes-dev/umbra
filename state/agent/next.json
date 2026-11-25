@@ -1,13 +1,10 @@
 {
- "next": [
-  "windows: MSVC harness run, then a live attach on the alt account with 0.1.8-dev",
-  "if attach reports 'own thread', find out which threads never turn alertable and widen the APC set",
-  "freeze the 12 resolved anchors into patterns.json / patterns.h from a live print",
-  "verify spoofer and account location with the alt signed in",
-  "after a chunk runs: getconnections signal walk, then the Fortnite product"
- ],
- "blocked": [
-  "live attach needs the windows box; this container has no Roblox"
- ],
- "updated": "2026-11-25T05:53:40"
+  "top": "live attach with 0.1.12-dev on a light place - the rax fix is the first build where a hooked call can actually return its result",
+  "then": [
+    "capture the crashpad rip if it still dies; module list decides byrefon vs noreturn",
+    "freeze the 12 anchors from a successful run into anchors.txt for build 2.748.1526.0",
+    "confirm the APC install path reports existing threads, not its own",
+    "spoofer + account location verified with the alt signed in"
+  ],
+  "blocked": "no Roblox in the container"
 }

@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795624010.7560673,
-  "iso": "2026-11-25T16:26:50Z",
-  "note": "root cause found: replay clobbered rax (return value)",
+  "at": 1795626292.6253362,
+  "iso": "2026-11-25T17:04:52Z",
+  "note": "0.1.12-dev shipped with the rax fix",
   "state": "working",
   "alerted": false,
-  "beats": 21
+  "beats": 22
  },
  "windows": {
   "at": 1795614841.399289,

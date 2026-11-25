@@ -15,7 +15,7 @@ public static class Runtime
 
     public static string Workspace => Path.Combine(Root, "workspace");
 
-    public static string PayloadDll => Path.Combine(AppContext.BaseDirectory, "native", "core.dll");
+    public static string PayloadDll => Path.Combine(AppContext.BaseDirectory, "payload", "core.dll");
 
     /// <summary>Copies the shipped Luau and makes the folders the payload expects.</summary>
     public static void Ensure()

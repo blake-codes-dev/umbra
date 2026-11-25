@@ -107,6 +107,26 @@ static int open_pipe(void);
 static char g_stage[32] = "start";
 
 /* ------------------------------------------------------------------ plumbing */
+/* safe read: MSVC uses SEH, mingw (whose SEH is a no-op) reads through the kernel instead.
+   Everything that can point at a wrong address goes through this. */
+static int safe_read(const void *at, void *out, size_t size)
+{
+#if defined(__MINGW32__)
+    SIZE_T got = 0;
+    return ReadProcessMemory(GetCurrentProcess(), at, out, size, &got) && got == size;
+#else
+    UMBRA_TRY {
+        const unsigned char *from = (const unsigned char *)at;
+        unsigned char *to = (unsigned char *)out;
+        for (size_t i = 0; i < size; i++) to[i] = from[i];
+        return 1;
+    }
+    UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+        return 0;
+    }
+#endif
+}
+
 static void stage(const char *name)
 {
     int i = 0;
@@ -190,18 +210,16 @@ static void *scan_module(HMODULE module, const unsigned char *pattern, size_t le
 
     for (cursor = start; cursor + length < end; cursor++) {
         size_t i = 0;
+        unsigned char window[64];
         int ok = 1;
-        UMBRA_TRY {
-            for (; i < length; i++) {
-                if (pattern[i] == 0xCC) continue;
-                if (cursor[i] != pattern[i]) {
-                    ok = 0;
-                    break;
-                }
+        if (length > sizeof(window)) continue;
+        if (!safe_read(cursor, window, length)) continue;
+        for (; i < length; i++) {
+            if (pattern[i] == 0xCC) continue;
+            if (window[i] != pattern[i]) {
+                ok = 0;
+                break;
             }
-        }
-        UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-            ok = 0;
         }
         if (ok) return cursor;
     }
@@ -216,25 +234,22 @@ static void *scan_module(HMODULE module, const unsigned char *pattern, size_t le
    Measured on 2.748.1526.0 (ASSUMPTIONS.md); re-check the offsets on a version bump. */
 static int looks_resting(lua_State *state)
 {
-    unsigned char *l = (unsigned char *)state;
-    unsigned long long ci, ciBase, top, base, func;
+    unsigned char header[0x100];
+    unsigned long long ci, ciBase, top, base, func, global;
     unsigned short nci;
-    UMBRA_TRY {
-        ci = *(unsigned long long *)(l + L_CI);
-        ciBase = *(unsigned long long *)(l + 0x20);
-        nci = *(unsigned short *)(l + 0x30);
-        top = *(unsigned long long *)(l + L_TOP);
-        base = *(unsigned long long *)(l + L_BASE);
-        func = *(unsigned long long *)(l + 0x70);
-    }
-    UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-        return 0;
-    }
+    if (!safe_read(state, header, sizeof(header))) return 0;
+    ci = *(unsigned long long *)(header + L_CI);
+    ciBase = *(unsigned long long *)(header + 0x20);
+    nci = *(unsigned short *)(header + 0x30);
+    top = *(unsigned long long *)(header + L_TOP);
+    base = *(unsigned long long *)(header + L_BASE);
+    func = *(unsigned long long *)(header + 0x70);
+    global = *(unsigned long long *)(header + L_GLOBAL);
     if (nci != 0 || ci != ciBase) return 0;
     if (base != top) return 0;
     if (func + 0x10 != base) return 0;
     if (top < 0x10000 || base < 0x10000) return 0;
-    if (*(unsigned long long *)(l + L_GLOBAL) < 0x10000) return 0;
+    if (global < 0x10000) return 0;
     return 1;
 }
 
@@ -258,16 +273,12 @@ static lua_State *state_from_scriptcontext(void)
             scanned += region.RegionSize;
             for (; walk < end; walk += 8) {
                 unsigned long long globalState = *(unsigned long long *)walk;
-                lua_State *candidate;
+                void *candidate = 0;
                 if (globalState < 0x10000 || (globalState & 7)) continue;
-                UMBRA_TRY {
-                    candidate = *(lua_State **)((unsigned char *)globalState + 0x2f0);
-                }
-                UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+                if (!safe_read((void *)((ULONG_PTR)globalState + 0x2f0), &candidate, sizeof(candidate)))
                     continue;
-                }
-                if (candidate && !((unsigned long long)candidate & 7) && looks_resting(candidate))
-                    return candidate;
+                if (candidate && !((ULONG_PTR)candidate & 7) && looks_resting((lua_State *)candidate))
+                    return (lua_State *)candidate;
             }
         }
         cursor = (unsigned char *)region.BaseAddress + region.RegionSize;
@@ -306,7 +317,7 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
         fail("compile", "runner.luau missing");
         return;
     }
-    UMBRA_TRY {
+    {
         /* function first, then its arguments: pcall takes the callee from
            L->top - (nargs + 1), so anything pushed before the callee would be called instead.
            stack: [runner] [bridge] [bus] -> pcall(2) -> runner(bridge, bus) */
@@ -318,9 +329,6 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
         push_bus(state);
         if (g.pcall(state, 2, 0, 0) != 0)
             fail("resume", g.tolstring ? g.tolstring(state, -1, 0) : "runner did not start");
-    }
-    UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-        fail("resume", "structured exception while starting the runner");
     }
 }
 

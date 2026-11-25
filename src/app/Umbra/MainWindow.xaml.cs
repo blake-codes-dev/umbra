@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -134,17 +135,26 @@ public partial class MainWindow : Window
 
     public void OpenMenu_Click(object sender, RoutedEventArgs e)
     {
-        var path = FindRepoFile("src", "luau", "menu.luau");
-        if (path is null)
+        var path = FindRepoFile("src", "luau", "menu.luau") ?? Path.Combine(AppContext.BaseDirectory, "library", "menu.luau");
+        if (!File.Exists(path))
         {
             RunHint.Text = "menu.luau not found";
             return;
         }
         try
         {
-            Clipboard.SetText(System.IO.File.ReadAllText(path));
+            var source = File.ReadAllText(path);
+            if (_backend.State == InjectState.Attached)
+            {
+                // run it for them: the menu is the product, not a snippet to paste
+                _backend.Execute(source);
+                NavConsole.IsChecked = true;
+                RunHint.Text = "menu injected";
+                return;
+            }
+            Clipboard.SetText(source);
             NavScripts.IsChecked = true;
-            RunHint.Text = "menu.luau copied, execute it in the client";
+            RunHint.Text = "menu copied, execute it in the client";
         }
         catch (Exception)
         {

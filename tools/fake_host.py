@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Fake injected host: serves \\\\.\\pipe\\umbra-<pid> and speaks the panel protocol.
+"""Fake injected host: serves \\\\.\\pipe\\lyphen-<pid> and speaks the panel protocol.
 
 Lets the GUI be driven end to end with no Roblox client and no DLL.
 
   python tools/fake_host.py --pid 1234
   python tools/fake_host.py --pid 1234 --script "print(1)"   # push a line then exit
 
-Protocol: newline-delimited JSON, see src/app/Umbra/Services/PipeBackend.cs.
+Protocol: newline-delimited JSON, see src/app/Lyphen/Services/PipeBackend.cs.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def send(handle, payload: dict) -> None:
 
 
 def serve(pid: int, script: str | None) -> None:
-    name = rf"\\.\pipe\umbra-{pid}"
+    name = rf"\\.\pipe\lyphen-{pid}"
     handle = win32pipe.CreateNamedPipe(
         name,
         win32pipe.PIPE_ACCESS_DUPLEX,

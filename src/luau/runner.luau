@@ -1,5 +1,5 @@
 --!nocheck
--- Umbra runner. The only chunk native code ever calls: `task.spawn(runnerChunk)`.
+-- Lyphen runner. The only chunk native code ever calls: `task.spawn(runnerChunk)`.
 -- Everything after that is Luau, inside the client's own scheduler, so no yield ever
 -- crosses a native frame. See docs/protocol.md for the bus layout this drains.
 
@@ -14,10 +14,10 @@ local rawLoad = BRIDGE.loadstring or loadstring
 local API
 do
     if type(BRIDGE.loadstring) ~= "function" then
-        error("umbra: the core has no compiler (loadstring bridge missing)")
+        error("lyphen: the core has no compiler (loadstring bridge missing)")
     end
     local chunk, loadError = BRIDGE.loadstring(BRIDGE.apiSource)
-    if not chunk then error("umbra: api did not compile: " .. tostring(loadError)) end
+    if not chunk then error("lyphen: api did not compile: " .. tostring(loadError)) end
     API = chunk(BRIDGE)
 end
 local OP_EXEC = 1
@@ -53,7 +53,7 @@ local function makeEnv(id)
     env.getgenv = function() return genv end
     env.getrenv = function() return env end
     env.shared = genv
-    env.identifyexecutor = function() return "Umbra", "0.1.0" end
+    env.identifyexecutor = function() return "Lyphen", "0.1.0" end
     env.getthreadidentity = function() return 8 end
     local identity = 8
 
@@ -72,7 +72,7 @@ local function makeEnv(id)
 
     -- loadstring compiles against this env, never the global one
     env.loadstring = function(source, chunkName)
-        local chunk, err = rawLoad(source, chunkName or ("@Umbra: " .. id))
+        local chunk, err = rawLoad(source, chunkName or ("@Lyphen: " .. id))
         if not chunk then return nil, err end
         setfenv(chunk, env)
         return chunk
@@ -144,7 +144,7 @@ end)
 
 write(OUT_INFO, 0, "runner up")
 
-genv.__umbraRunner = {
+genv.__lyphenRunner = {
     version = "0.1.0",
     exec = function(source)
         nextJob += 1

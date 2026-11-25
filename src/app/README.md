@@ -1,9 +1,9 @@
-# Umbra panel
+# Lyphen panel
 
 WPF front end. Windows only, net9.0-windows.
 
 ```
-dotnet run --project src/app/Umbra      # or build and start the exe
+dotnet run --project src/app/Lyphen      # or build and start the exe
 ```
 
 `Services/IBackend.cs` is the whole seam: `AttachAsync`, `Detach`, `Execute`,

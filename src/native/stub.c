@@ -1,6 +1,6 @@
 #include <windows.h>
 
-/*  Umbra stub: proves (1) code executes inside a foreign process and
+/*  Lyphen stub: proves (1) code executes inside a foreign process and
     (2) the process can talk back out. Two channels are tried, both recorded
     in the marker file so a failure is diagnosable rather than silent.  */
 
@@ -67,7 +67,7 @@ static void probe(char *out)
     if (f != INVALID_HANDLE_VALUE)
         CloseHandle(f);
 
-HANDLE pipe = CreateFileA("\\\\.\\pipe\\umbra_stub", GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
+HANDLE pipe = CreateFileA("\\\\.\\pipe\\lyphen_stub", GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
     DWORD e3 = GetLastError();
     g_pipe = pipe;
     o = put_hex(o, (unsigned long long)(ULONG_PTR)pipe);

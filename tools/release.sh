@@ -4,7 +4,7 @@
 #
 #   bash tools/release.sh 0.1.0-dev
 #
-# Output: dist/Umbra-<version>-win-x64.zip + the hash to post in #builds.
+# Output: dist/Lyphen-<version>-win-x64.zip + the hash to post in #builds.
 set -euo pipefail
 
 version="${1:-0.0.0-dev}"
@@ -21,17 +21,17 @@ if [ ! -x /tmp/tools/obfuscar.console ]; then
   dotnet tool install --tool-path /tmp/tools Obfuscar.GlobalTool >/dev/null
 fi
 
-proj=src/app/Umbra
+proj=src/app/Lyphen
 
 # native payload: normally built by src/native/build.bat (MSVC, real SEH). Fall back to mingw
 # here so the artifact is never shipped without a core, and say so when it is degraded.
-mkdir -p src/app/Umbra/payload
+mkdir -p src/app/Lyphen/payload
 if [ -f src/native/core.c ]; then
   if command -v x86_64-w64-mingw32-gcc >/dev/null; then
     # allow-multiple-definition: mingw's pesect.o and the CRT both define
     # _IsNonwritableInCurrentImage once the code touches image sections
     x86_64-w64-mingw32-gcc -shared -O2 -mno-stack-arg-probe -Wl,--allow-multiple-definition src/native/core.c \
-      -o src/app/Umbra/payload/core.dll -lwinhttp -luser32 || {
+      -o src/app/Lyphen/payload/core.dll -lwinhttp -luser32 || {
         echo "core.dll build failed"; exit 1; }
     echo "core.dll built with mingw (SEH guards are MSVC-only; build.bat on Windows is the real one)"
   else
@@ -51,7 +51,7 @@ fi
 
 rm -rf dist/protected
 obfuscar.console -v:q obfuscar.xml
-cp dist/protected/Umbra.dll "$proj/bin/Release/net9.0-windows/win-x64/Umbra.dll"
+cp dist/protected/Lyphen.dll "$proj/bin/Release/net9.0-windows/win-x64/Lyphen.dll"
 
 rm -rf dist/publish
 (cd "$proj" && dotnet publish -c Release -r win-x64 --self-contained true --no-build \
@@ -59,17 +59,17 @@ rm -rf dist/publish
   -p:EnableCompressionInSingleFile=true -p:Version="$version" -o "$root/dist/publish")
 
 mkdir -p dist/release
-cp dist/publish/Umbra.exe dist/release/
+cp dist/publish/Lyphen.exe dist/release/
 cp -r dist/publish/library dist/release/
 # runtime payload and the chunks the core loads: without these the app can never inject
 cp -r dist/publish/luau dist/release/
 # payload/ sits inside the project and publish skips it, so take it from the build output
 cp -r "$proj/bin/Release/net9.0-windows/win-x64/payload" dist/release/
 cp dist/protected/Mapping.txt obfuscar.xml dist/release/
-(cd dist/release && sha256sum Umbra.exe > SHA256SUMS.txt)
-(cd dist/release && zip -q -r "../Umbra-$version-win-x64.zip" Umbra.exe library luau payload SHA256SUMS.txt Mapping.txt obfuscar.xml)
+(cd dist/release && sha256sum Lyphen.exe > SHA256SUMS.txt)
+(cd dist/release && zip -q -r "../Lyphen-$version-win-x64.zip" Lyphen.exe library luau payload SHA256SUMS.txt Mapping.txt obfuscar.xml)
 
 echo
-echo "artifact: dist/Umbra-$version-win-x64.zip"
-sha256sum "dist/Umbra-$version-win-x64.zip"
+echo "artifact: dist/Lyphen-$version-win-x64.zip"
+sha256sum "dist/Lyphen-$version-win-x64.zip"
 echo "post that hash in #builds with the version, then the changelog line"

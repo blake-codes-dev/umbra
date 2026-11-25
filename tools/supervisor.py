@@ -386,7 +386,7 @@ def check_cycle(console: bool = False) -> dict:
     if ages.get("agent") and ages["agent"] * 60 > AGENT_TURN_MAX_AGE:
         issues.append(f"no agent turn for {ages['agent'] / 60:.0f} h (app closed or provider down)")
 
-    # vault: daily snapshot, weekly backup into D:/UmbraVault, drift report for user files
+    # vault: daily snapshot, weekly backup into D:/LyphenVault, drift report for user files
     try:
         subprocess.run([sys.executable, str(TOOLS / "vault.py"), "--quiet"],
                        capture_output=True, timeout=600)

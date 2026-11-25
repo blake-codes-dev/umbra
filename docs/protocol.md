@@ -15,7 +15,7 @@ moves bytes. That is what keeps yields out of native frames.
 
 ## Pipe (GUI ↔ core)
 
-`\\.\pipe\umbra-<pid>`, one JSON object per line, both directions.
+`\\.\pipe\lyphen-<pid>`, one JSON object per line, both directions.
 
 | Direction | Object | Meaning |
 |---|---|---|
@@ -32,7 +32,7 @@ Unknown `t` is ignored by both sides, so a newer GUI can talk to an older core.
 ## Bus (core ↔ runner)
 
 One 64 KiB section, file-backed so it survives a re-inject while the client runs:
-`%LOCALAPPDATA%\Umbra\bus-<pid>.bin`. The core creates it, the runner opens it through a
+`%LOCALAPPDATA%\Lyphen\bus-<pid>.bin`. The core creates it, the runner opens it through a
 bridged `BUS` table (native `MapViewOfFile` result, exposed as `push`/`take`/`stop`).
 
 Header, all u32 little endian:
@@ -59,7 +59,7 @@ Output kinds: `1 print`, `2 warn`, `3 error`, `4 info`, `5 done`.
 
 ## Bridging into Luau
 
-`api.luau` and `runner.luau` ship next to the app and are read from `%LOCALAPPDATA%\Umbra`
+`api.luau` and `runner.luau` ship next to the app and are read from `%LOCALAPPDATA%\Lyphen`
 at inject time, so a Luau change needs no rebuild and the C side stays small. The native
 closures are registered in one table and rebound by the runner before any script env exists:
 file (workspace-sandboxed), WinHTTP, SendInput/clipboard, foreground check, plus the three

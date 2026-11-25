@@ -5,7 +5,7 @@ vault.py — fingerprint the user's files, back them up, and prove nothing moved
 Three jobs:
   snapshot  record size+mtime for every file under the protected folders
   verify    diff today against the last snapshot; any change is listed by path
-  backup    mirror the protected folders and the project to D:\\UmbraVault\\<stamp>
+  backup    mirror the protected folders and the project to D:\\LyphenVault\\<stamp>
 
 The local models never call this: they choose an action name, the action calls
 vault. So a model cannot name a path, and the only code that writes outside the
@@ -32,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / "state" / "vault"
 HOME = Path.home()
-VAULT = Path("D:/UmbraVault")
+VAULT = Path("D:/LyphenVault")
 
 PROTECTED = [
     HOME / "Desktop", HOME / "Documents", HOME / "Downloads", HOME / "Pictures",

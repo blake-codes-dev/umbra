@@ -12,7 +12,7 @@ def api(method, path, payload=None):
     req = urllib.request.Request(API + path, data=data, method=method)
     req.add_header("Authorization", "Bot " + tok)
     req.add_header("Content-Type", "application/json")
-    req.add_header("User-Agent", "UmbraProbe")
+    req.add_header("User-Agent", "LyphenProbe")
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             b = r.read()

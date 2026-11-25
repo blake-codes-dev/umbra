@@ -15,6 +15,7 @@ Dedupe is by text hash, so a message that arrives down both paths is only seen o
 """
 import argparse
 import asyncio
+import subprocess
 import hashlib
 import json
 import os
@@ -49,7 +50,7 @@ def call(path, payload=None):
     data = None if payload is None else json.dumps(payload).encode()
     request = urllib.request.Request(API + path, data=data, method="POST" if data else "GET")
     request.add_header("Authorization", "Bot " + token())
-    request.add_header("User-Agent", "UmbraRelay/1.0 (agent bridge)")
+    request.add_header("User-Agent", "LyphenRelay/1.0 (agent bridge)")
     if data:
         request.add_header("Content-Type", "application/json")
     try:
@@ -202,7 +203,7 @@ async def gateway(state):
                 beat_task = asyncio.create_task(beat())
                 await socket.send(json.dumps({"op": 2, "d": {
                     "token": token(), "intents": 0,
-                    "properties": {"os": "linux", "browser": "umbra", "device": "umbra"}}}))
+                    "properties": {"os": "linux", "browser": "lyphen", "device": "lyphen"}}}))
                 async for raw in socket:
                     payload = json.loads(raw)
                     if payload.get("s") is not None:
@@ -222,6 +223,9 @@ async def gateway(state):
                         append_mail("container", "relay:" + who, text)
                         state["posted"].append(digest(text))
                         save_state(state)
+                        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "pulse.py"),
+                            "beat", "--as", "windows", "--note", "spoke on /say"],
+                           capture_output=True, timeout=20)
                         print("%s  <- /say %s: %s" % (now(), who, text[:90]))
                         respond(payload["d"], "logged" if len(text) <= 1800 else
                                 "logged, but long: the tail is only in my mailbox")
@@ -233,12 +237,41 @@ async def gateway(state):
         await asyncio.sleep(3)
 
 
+def watchdog():
+    """Shout in #relay when the other side goes quiet, and say so in the mailbox."""
+    try:
+        out = subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "pulse.py"),
+                              "check"], capture_output=True, text=True, timeout=20)
+    except Exception as error:
+        print("%s  watchdog error: %s" % (now(), error))
+        return
+    for line in out.stdout.splitlines():
+        if not line.startswith("stale "):
+            continue
+        _, side, minutes, *note = line.split(" ")
+        if side == "container":
+            continue                                    # my own staleness is the human's guess
+        text = ("[container] %s has been silent %s min (last note: %s). "
+                "If it died mid-step, the ALERT file has the resume point: state/agent/ALERT.md"
+                % (side, minutes, " ".join(note) or "none"))
+        try:
+            call("/channels/%s/messages" % CHANNEL, {"content": text[:1900]})
+            append_mail("windows", "watchdog", text)
+            print("%s  ! %s" % (now(), text[:110]))
+        except Exception as error:
+            print("%s  ! relay failed: %s" % (now(), error))
+
+
 async def poll_loop(state, own_id, interval):
+    ticks = 0
     while True:
         try:
             pull(state, own_id)
             push(state)
             save_state(state)
+            ticks += 1
+            if ticks % 20 == 1:                          # roughly once a minute at 3s
+                watchdog()
         except Exception as error:
             print("%s  poll error: %s" % (now(), error))
         await asyncio.sleep(interval)

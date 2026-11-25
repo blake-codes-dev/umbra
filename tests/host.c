@@ -6,7 +6,7 @@
  *  `task`, `loadstring`, `getfenv`/`setfenv` - and then asserts end to end:
  *      runner loads -> command in -> print captured out -> done flag -> file bridge works.
  */
-#define UMBRA_HOST 1
+#define LYPHEN_HOST 1
 
 typedef struct { void *BaseAddress; void *AllocBase; unsigned AllocProtect; unsigned long long RegionSize; unsigned State; unsigned Protect; unsigned Type; } MEMORY_BASIC_INFORMATION_;
 #include <stdio.h>
@@ -213,9 +213,27 @@ static void install_fakes(void)
  * deliberately sloppy on purpose: any method or property an Instance lacks is created on demand
  * as a no-op, so the test fails on real errors (bad syntax, nil indexing, wrong call shapes)
  * instead of on gaps in the fake. */
-static int ui_noop(lua_State *state) { lua_createtable(state, 0, 0); return 1; }
+/* every "method" hands back a wildcard: callable, indexable, connectable */
+static void push_wild(lua_State *state);
+static int ui_noop(lua_State *state) { (void)state; push_wild(state); return 1; }
+
+static void push_wild(lua_State *state);
+static int traceback(lua_State *state)
+{
+    const char *message = lua_tolstring(state, 1, 0);
+    luaL_traceback(state, state, message ? message : "?", 1);
+    return 1;
+}
 
 static int ui_self(lua_State *state) { lua_pushvalue(state, 1); return 1; }
+
+/* a wildcard: indexable, callable, connectable - anything the real API has that we did not name */
+static int ui_wild_call(lua_State *state)
+{
+    (void)state;
+    push_wild(state);
+    return 1;
+}
 
 static int ui_index(lua_State *state)
 {
@@ -242,7 +260,9 @@ static int ui_index(lua_State *state)
         lua_setfield(state, -2, "Connect");
         return 1;
     }
-    lua_pushcclosurek(state, ui_noop, key, 0, 0);                 /* anything else is a no-op */
+    /* a wildcard is callable and indexable, so `Signal:Connect(f)` and `obj.Method(a)` both work
+       without us having to name every signal and method in advance */
+    push_wild(state);
     return 1;
 }
 
@@ -266,6 +286,19 @@ static void push_object(lua_State *state)
     lua_setfield(state, -2, "__index");
     lua_pushcclosurek(state, ui_newindex, "newindex", 0, 0);
     lua_setfield(state, -2, "__newindex");
+    lua_setmetatable(state, -2);
+}
+
+static void push_wild(lua_State *state)
+{
+    push_object(state);
+    lua_createtable(state, 0, 3);
+    lua_pushcclosurek(state, ui_index, "index", 0, 0);
+    lua_setfield(state, -2, "__index");
+    lua_pushcclosurek(state, ui_newindex, "newindex", 0, 0);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcclosurek(state, ui_wild_call, "call", 0, 0);
+    lua_setfield(state, -2, "__call");
     lua_setmetatable(state, -2);
 }
 
@@ -411,10 +444,10 @@ static void install_ui_fakes(void)
     lua_setfield(L, -2, "new");
     lua_setglobal(L, "Vector3");
 
-    /* Enum: every member of every enum is a table with a Name, like the real thing reads */
+    /* Enum: any enum, any member, reads back as an object with a Name */
     lua_createtable(L, 0, 1);
     lua_newtable(L);
-    lua_pushcclosurek(L, constructor, "__index", 0, 0);
+    lua_pushcclosurek(L, ui_wild_call, "__index", 0, 0);
     lua_setfield(L, -2, "__index");
     lua_setmetatable(L, -2);
     lua_setglobal(L, "Enum");
@@ -614,10 +647,10 @@ int main(void)
     SetUnhandledExceptionFilter(crash_dump);
     /* the harness installs by hand, so the hook's thunk must never try to install itself */
     g_installed = 1;
-    printf("umbra native harness\n");
+    printf("lyphen native harness\n");
     {
         char pipeName[64];
-        wsprintfA(pipeName, "\\\\.\\pipe\\umbra-%u", GetCurrentProcessId());
+        wsprintfA(pipeName, "\\\\.\\pipe\\lyphen-%u", GetCurrentProcessId());
         {
             int opened = open_pipe();
             printf("  [dbg] open_pipe=%d err=%lu\n", opened, GetLastError());
@@ -629,7 +662,7 @@ int main(void)
 
     /* the bus, exactly as the core creates it */
     GetTempPathA(MAX_PATH, busPath);
-    lstrcatA(busPath, "umbra-harness-bus.bin");
+    lstrcatA(busPath, "lyphen-harness-bus.bin");
     g_busFile = CreateFileA(busPath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                             0, CREATE_ALWAYS, 0, 0);
     section = CreateFileMappingA(g_busFile, 0, PAGE_READWRITE, 0, BUS_SIZE, 0);
@@ -752,7 +785,7 @@ int main(void)
         g_quietThunk = 1;
         g_installed = 0;
         g_installed_via_thunk = 0;
-        int hookedTop = getenv("UMBRA_NO_HOOK") ? 0 : install_hook((void *)lua_gettop);
+        int hookedTop = getenv("LYPHEN_NO_HOOK") ? 0 : install_hook((void *)lua_gettop);
         CHECK(hookedTop, "gettop hook installs");
         for (int round = 0; round < 5 && hookedTop; round++) {
             base = lua_gettop(L);
@@ -802,9 +835,9 @@ int main(void)
     printf("  exec 0: %s", transcript);
 
     /* one script, print captured */
-    exec("print('hello from umbra')", transcript, sizeof(transcript));
+    exec("print('hello from lyphen')", transcript, sizeof(transcript));
     printf("  exec 1: %s", transcript);
-    CHECK(find_text(transcript, "hello from umbra") != 0, "print captured through the bus");
+    CHECK(find_text(transcript, "hello from lyphen") != 0, "print captured through the bus");
     CHECK(find_text(transcript, "\"op\":\"done\"") != 0, "done flag written");
 
     /* the file bridge, through api.luau */
@@ -899,8 +932,10 @@ int main(void)
                 int loaded = luau_load(L, "@menu", bytecode, size, 0);
                 CHECK(loaded == 0, "menu.luau loads");
                 if (loaded == 0) {
-                    int st = lua_pcall(L, 0, 0, 0);
+                    lua_pushcclosurek(L, traceback, "tb", 0, 0);
+                    int st = lua_pcall(L, 0, 0, -2);
                     if (st != 0) printf("  [dbg] menu error: %s\n", lua_tolstring(L, -1, 0));
+                    lua_pop(L, 1);
                     CHECK(st == 0, "menu.luau builds its window without an error");
                 }
                 lua_settop(L, base);

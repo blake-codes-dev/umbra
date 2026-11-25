@@ -16,7 +16,7 @@ fi
 
 # Luau's VM is C++ with mangled names, so the harness compiles as C++ too; core.c is
 # included from it so the same source that ships is the one under test
-x86_64-w64-mingw32-g++ -std=c++17 -O1 -g -fno-ipa-icf -DUMBRA_HOST \
+x86_64-w64-mingw32-g++ -std=c++17 -O1 -g -fno-ipa-icf -DLYPHEN_HOST \
   -I"$LUAU_SRC/VM/include" -I"$LUAU_SRC/Compiler/include" \
   -I"$LUAU_SRC/Common/include" -I"$LUAU_SRC/Ast/include" \
   -x c++ tests/host.c -x none \

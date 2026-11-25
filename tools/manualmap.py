@@ -33,7 +33,7 @@ k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 DEBUG = "-v" in sys.argv
 
-PIPE_NAME = (chr(92) * 2 + "." + chr(92) + "pipe" + chr(92) + "umbra_stub").encode("ascii")
+PIPE_NAME = (chr(92) * 2 + "." + chr(92) + "pipe" + chr(92) + "lyphen_stub").encode("ascii")
 CONTEXT_CONTROL_INTEGER = 0x00100003
 RIP_OFFSET = 0xF8
 FLAGS_OFFSET = 0x30

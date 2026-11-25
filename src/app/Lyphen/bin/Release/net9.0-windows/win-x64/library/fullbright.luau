@@ -1,0 +1,19 @@
+-- name: fullbright
+-- desc: removes darkness without touching your other lighting settings
+local Lighting = game:GetService("Lighting")
+
+if _G.__lyphenBright then
+    for prop, value in pairs(_G.__lyphenBright) do Lighting[prop] = value end
+    _G.__lyphenBright = nil
+else
+    _G.__lyphenBright = {
+        Ambient = Lighting.Ambient,
+        OutdoorAmbient = Lighting.OutdoorAmbient,
+        Brightness = Lighting.Brightness,
+        FogEnd = Lighting.FogEnd,
+    }
+    Lighting.Ambient = Color3.fromRGB(180, 180, 180)
+    Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
+    Lighting.Brightness = 3
+    Lighting.FogEnd = 1e6
+end

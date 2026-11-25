@@ -1,4 +1,4 @@
-/*  Umbra core. Manual-mapped, no module entry, no thread of its own.
+/*  Lyphen core. Manual-mapped, no module entry, no thread of its own.
  *
  *  Sequence, once the entry is running on a hijacked client thread:
  *    1. resolve kernel32 file/mapping calls (no IAT here, the image is mapped by hand)
@@ -57,11 +57,11 @@ static int load_http(void)
 /* MSVC has SEH; mingw does not, so a mingw build degrades to plain blocks instead of
    silently losing the guards. Only the MSVC build ships. */
 #if defined(__MINGW32__)
-#define UMBRA_TRY if (1)
-#define UMBRA_EXCEPT(e) else
+#define LYPHEN_TRY if (1)
+#define LYPHEN_EXCEPT(e) else
 #else
-#define UMBRA_TRY __try
-#define UMBRA_EXCEPT(e) __except (e)
+#define LYPHEN_TRY __try
+#define LYPHEN_EXCEPT(e) __except (e)
 #endif
 
 #define BUS_MAGIC 0x52424D55u /* 'UMBR' */
@@ -88,7 +88,7 @@ static int load_http(void)
 
 
 
-#ifndef UMBRA_HOST
+#ifndef LYPHEN_HOST
 /* in the shipped build there is no lua.h: the state is opaque and the API arrives as
    function pointers from the scan. The harness includes the real header instead. */
 typedef void *lua_State;
@@ -148,10 +148,12 @@ static void push_bridge(lua_State *state, const char *apiSource);
 static int cb_pump(lua_State *state);
 static int resolve(void);
 static int calibrate(unsigned char *base);
+static unsigned char *next_scan(unsigned char *base, size_t span, unsigned char *from,
+                               unsigned char **end);
 static int open_pipe(void);
 static char g_stage[32] = "start";
 
-#ifndef UMBRA_HOST   /* in the harness the real CRT is linked */
+#ifndef LYPHEN_HOST   /* in the harness the real CRT is linked */
 /* ---- the few crt-owned symbols MSVC still references -----------------------------------------
    Linking the static CRT would drag its startup in (cookies, per-thread data, atexit) and the
    payload is manual-mapped with no init call, so the handful of symbols the compiler and the
@@ -248,7 +250,7 @@ static void init_guard_thunks(void)
    Everything that can point at a wrong address goes through this. */
 static int safe_read(const void *at, void *out, size_t size)
 {
-#if defined(UMBRA_HOST)
+#if defined(LYPHEN_HOST)
     /* the harness owns its own memory, so reads can be direct - but the image has uncommitted
        holes, so the region is checked first. The last region is cached because the scanners hit
        the same page millions of times. */
@@ -270,13 +272,13 @@ static int safe_read(const void *at, void *out, size_t size)
     SIZE_T got = 0;
     return ReadProcessMemory(GetCurrentProcess(), at, out, size, &got) && got == size;
 #else
-    UMBRA_TRY {
+    LYPHEN_TRY {
         const unsigned char *from = (const unsigned char *)at;
         unsigned char *to = (unsigned char *)out;
         for (size_t i = 0; i < size; i++) to[i] = from[i];
         return 1;
     }
-    UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+    LYPHEN_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
         return 0;
     }
 #endif
@@ -295,7 +297,7 @@ static void stage(const char *name)
 static void put(const char *s)
 {
     /* last resort debug channel: only used while the pipe is not up yet */
-    HANDLE f = CreateFileA("C:\\Windows\\Temp\\umbra-core.log", FILE_APPEND_DATA,
+    HANDLE f = CreateFileA("C:\\Windows\\Temp\\lyphen-core.log", FILE_APPEND_DATA,
                            FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_ALWAYS, 0, 0);
     DWORD w;
     if (f != INVALID_HANDLE_VALUE) {
@@ -484,7 +486,7 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
         /* function first, then its arguments: pcall takes the callee from
            L->top - (nargs + 1), so anything pushed before the callee would be called instead.
            stack: [runner] [bridge] [bus] -> pcall(2) -> runner(bridge, bus) */
-        if (load_source(state, "@Umbra/runner", chunk) != 0) {
+        if (load_source(state, "@Lyphen/runner", chunk) != 0) {
             fail("compile", g.tolstring ? g.tolstring(state, -1, 0) : "runner did not compile");
             return;
         }
@@ -514,7 +516,7 @@ static int argstr(lua_State *state, int index, char *out, size_t size)
 static const char *workspace(char *path)
 {
     GetEnvironmentVariableA("LOCALAPPDATA", path, MAX_PATH);
-    lstrcatA(path, "\\Umbra\\workspace");
+    lstrcatA(path, "\\Lyphen\\workspace");
     CreateDirectoryA(path, 0);
     return path;
 }
@@ -713,7 +715,7 @@ static int cb_request(lua_State *state)
     if (type[0]) MultiByteToWideChar(CP_ACP, 0, type, -1, wideType, 128);
 
     if (!load_http()) { failarg(state, "no winhttp"); return 0; }
-    session = g_http.open(L"Umbra/0.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    session = g_http.open(L"Lyphen/0.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                           WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!session) return failarg(state, "winhttp open"), 3;
     connect = g_http.connect(session, wideUrl, port, 0);
@@ -868,7 +870,7 @@ static int cb_loadstring(lua_State *state)
     bytecode = g.compile(source, length, 0, &size);
     VirtualFree(source, 0, MEM_RELEASE);
     if (!bytecode || size == 0) return failarg(state, "compile failed"), 2;
-    if (g.load(state, "@Umbra/chunk", bytecode, size, 0) != 0) return 1;   /* nil, err */
+    if (g.load(state, "@Lyphen/chunk", bytecode, size, 0) != 0) return 1;   /* nil, err */
     return 1;
 }
 
@@ -1028,7 +1030,7 @@ static unsigned char *module_base(const wchar_t *wanted)
     HMODULE direct = GetModuleHandleW(wanted);
     if (direct) return (unsigned char *)direct;
     LIST_ENTRY *head, *cursor;
-    UMBRA_TRY {
+    LYPHEN_TRY {
         peb = (unsigned char *)__readgsqword(0x60);
         head = (LIST_ENTRY *)(*(unsigned long long *)(peb + 0x18) + 0x10);
         cursor = head->Flink;
@@ -1042,7 +1044,7 @@ static unsigned char *module_base(const wchar_t *wanted)
             cursor = cursor->Flink;
         }
     }
-    UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+    LYPHEN_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
         return 0;
     }
     return 0;
@@ -1083,7 +1085,7 @@ static void *at(unsigned char *base, unsigned int rva, const unsigned char *sig,
         if (!executable(address)) return 0;
         return address;
     }
-    if (rva > UMBRA_TEXT_SIZE) {
+    if (rva > LYPHEN_TEXT_SIZE) {
         fail("scan", "rva outside the code section");
         return 0;
     }
@@ -1096,9 +1098,9 @@ static void *at(unsigned char *base, unsigned int rva, const unsigned char *sig,
 }
 
 #define RESOLVE(field, type, suffix, label) \
-    g.field = (type)at(base, UMBRA_RVA_##suffix, \
-                      UMBRA_SIGLEN_##suffix ? UMBRA_SIG_##suffix : 0, \
-                      UMBRA_SIGLEN_##suffix, label)
+    g.field = (type)at(base, LYPHEN_RVA_##suffix, \
+                      LYPHEN_SIGLEN_##suffix ? LYPHEN_SIG_##suffix : 0, \
+                      LYPHEN_SIGLEN_##suffix, label)
 
 /* Runs the caller's block inside SEH so a bad guess fails closed instead of killing the client.
    Dead weight without a registered unwind table, which is why the entry registers one first. */
@@ -1125,7 +1127,7 @@ static int readable_code(unsigned char *base, void *address, size_t need)
 /* ---- pinned anchors ---------------------------------------------------------------------------
    patterns.h is full of zeros because the shipped text is packed and no rva could be read from
    the file. A measured set therefore comes from outside: the app drops the running client's
-   FileVersion in build.txt and <LOCALAPPDATA>\Umbra\anchors.txt carries per-version blocks.
+   FileVersion in build.txt and <LOCALAPPDATA>\Lyphen\anchors.txt carries per-version blocks.
    Complete match wins outright; anything less falls through to the in-memory calibration. */
 typedef struct { const char *name; void **slot; } anchor_slot;
 
@@ -1246,7 +1248,7 @@ static char *read_chunk(const char *name)
     DWORD size = 0, read = 0;
     char *buffer;
     GetEnvironmentVariableA("LOCALAPPDATA", path, MAX_PATH);
-    lstrcatA(path, "\\Umbra\\");
+    lstrcatA(path, "\\Lyphen\\");
     lstrcatA(path, name);
     file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     if (file == INVALID_HANDLE_VALUE) return 0;
@@ -1348,28 +1350,23 @@ static char *find_name(unsigned char *base, const char *name, size_t size, char 
 /* rip-relative references to a fixed address, in executable memory only */
 static void *find_reference(void *needle, size_t limit)
 {
-    SYSTEM_INFO info;
-    unsigned char *cursor;
+    /* the referencing code is always inside the client image, so the search is bounded to it
+       (its own readable pages) instead of every executable page in the process */
+    unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
+    size_t span;
+    unsigned char *page, *end, *at;
     size_t seen = 0;
-    GetSystemInfo(&info);
-    cursor = (unsigned char *)info.lpMinimumApplicationAddress;
-    while (cursor < (unsigned char *)info.lpMaximumApplicationAddress && seen < limit) {
-        MEMORY_BASIC_INFORMATION region;
-        unsigned char *at, *end;
-        if (!VirtualQuery(cursor, &region, sizeof(region))) break;
-        cursor = (unsigned char *)region.BaseAddress + region.RegionSize;
-        if (region.State != MEM_COMMIT) continue;
-        if (region.Protect != PAGE_EXECUTE_READ && region.Protect != PAGE_EXECUTE_READWRITE &&
-            region.Protect != PAGE_EXECUTE_WRITECOPY && region.Protect != PAGE_EXECUTE)
-            continue;
-        at = (unsigned char *)region.BaseAddress;
-        end = at + region.RegionSize - 8;
-        seen += region.RegionSize;
-        for (; at < end; at++) {
+    (void)limit;
+    if (!base) return 0;
+    span = code_span(base);
+    if (!span) return 0;
+    page = 0;
+    while ((page = next_scan(base, span, page, &end)) != 0) {
+        for (at = page; at + 8 <= end && seen < (192u << 20); at++, seen++) {
             unsigned char head[8];
             long displacement;
             unsigned char *target;
-            if (!safe_read(at, head, sizeof(head))) break;
+            if (!safe_read(at, head, 8)) break;
             if ((head[0] & 0xF8) != 0x48) continue;              /* REX.W */
             /* lea r64,[rip+d] takes the address, mov r64,[rip+d] loads a slot holding it */
             if (head[1] != 0x8D && head[1] != 0x8B) continue;
@@ -1382,6 +1379,7 @@ static void *find_reference(void *needle, size_t limit)
                 if (safe_read(target, &slot, sizeof(slot)) && slot == needle) return at;
             }
         }
+        page = end;
     }
     return 0;
 }
@@ -1432,7 +1430,7 @@ static void *anchor_calls(unsigned char *base, const char *name, size_t nameLeng
     void *chosen = 0;
     if (!base) return 0;
     hit = find_name(base, name, nameLength, 0);
-#ifdef UMBRA_HOST
+#ifdef LYPHEN_HOST
     { printf("  [dbg] anchor %s base=%p hit=%p\n", name, (void *)base, (void *)hit); }
 #endif
     while (hit && !chosen) {
@@ -1469,24 +1467,49 @@ static void *previous_call(unsigned char *at, size_t window)
 }
 
 /* lua_gettop is (top - base) / 16 on the state header and nothing else: a very distinct shape */
+/* The client's text is packed: only pages the game has already run are decrypted, the rest read
+   as zeros (or are not committed at all). Every scan therefore walks readable, non-zero pages
+   instead of the flat range, and reports the page end so it never reads past it. */
+static unsigned char *next_scan(unsigned char *base, size_t span, unsigned char *from,
+                               unsigned char **end)
+{
+    MEMORY_BASIC_INFORMATION region;
+    unsigned char *limit = base + span;
+    if (from < base + 0x1000) from = base + 0x1000;
+    while (from < limit) {
+        unsigned char probe[4];
+        if (!VirtualQuery(from, &region, sizeof(region))) return 0;
+        *end = (unsigned char *)region.BaseAddress + region.RegionSize;
+        if (*end > limit) *end = limit;
+        from = (unsigned char *)region.BaseAddress;
+        if (region.State == MEM_COMMIT && (region.Protect & 0xFF) != PAGE_NOACCESS && *end - from >= 64 &&
+            safe_read(from, probe, 4) && (probe[0] | probe[1] | probe[2] | probe[3]))
+            return from;
+        from = *end;
+    }
+    return 0;
+}
+
 static void *find_gettop(unsigned char *base)
 {
-    unsigned char *start = base + 0x1000;
     size_t span = code_span(base);
-    size_t i;
+    unsigned char *page, *end, *at;
     if (!span) return 0;
-    for (i = 0; i + 32 < span; i++) {
-        unsigned char code[32];
-        if (!safe_read(start + i, code, sizeof(code))) return 0;
-        /* 48 8B 41 80      mov rax,[rcx+0x80]
-           48 2B 41 78      sub rax,[rcx+0x78]
-           48 C1 F8 04      sar rax,4
-           C3               ret */
-        if (code[0] != 0x48 || code[1] != 0x8B || code[2] != 0x41 || code[3] != 0x80) continue;
-        if (code[4] != 0x48 || code[5] != 0x2B || code[6] != 0x41 || code[7] != 0x78) continue;
-        if (code[8] != 0x48 || code[9] != 0xC1 || code[10] != 0xF8 || code[11] != 0x04) continue;
-        if (code[12] != 0xC3) continue;
-        return start + i;
+    page = 0;
+    while ((page = next_scan(base, span, page, &end)) != 0) {
+        for (at = page; at + 32 <= end; at++) {
+            unsigned char c[13];
+            int reg;
+            if (!safe_read(at, c, 13)) break;
+            /* mov rX,[rcx+0x80] / sub rX,[rcx+0x78] / sar rX,4 / ret, all on one register */
+            if (c[0] != 0x48 || c[1] != 0x8B || c[3] != 0x80) continue;
+            reg = c[2];
+            if (c[4] != 0x48 || c[5] != 0x2B || c[6] != reg || c[7] != 0x78) continue;
+            if (c[8] != 0x48 || c[9] != 0xC1 || (c[10] & 0xF8) != 0xF8 || (c[10] & 7) != (reg & 7)) continue;
+            if (c[11] != 0x04 || c[12] != 0xC3) continue;
+            return at;
+        }
+        page = end;
     }
     return 0;
 }
@@ -1726,7 +1749,7 @@ static void push_command(unsigned int op, unsigned int id, const char *payload)
 static int open_pipe(void)
 {
     char name[64];
-    wsprintfA(name, "\\\\.\\pipe\\umbra-%u", GetCurrentProcessId());
+    wsprintfA(name, "\\\\.\\pipe\\lyphen-%u", GetCurrentProcessId());
     g.pipe = CreateNamedPipeA(name, PIPE_ACCESS_DUPLEX,
                               PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT,
                               1, 8192, 8192, 0, 0);
@@ -1832,7 +1855,7 @@ static void handle_line(const char *line)
     } else if (find_text(line, "\"hello\"")) {
         char hello[160];
         wsprintfA(hello, "{\"op\":\"ready\",\"pid\":%u,\"build\":\"%s\"}\n",
-                  GetCurrentProcessId(), UMBRA_CLIENT_VERSION);
+                  GetCurrentProcessId(), LYPHEN_CLIENT_VERSION);
         pipe_line(hello);
     } else if (find_text(line, "\"bye\"")) {
         push_command(OP_SHUTDOWN, 0, "");
@@ -1901,7 +1924,7 @@ typedef struct {
 } HOOKREC;
 static HOOKREC g_hooks[HOOK_SLOTS];
 static int g_hookCount;
-#ifdef UMBRA_HOST
+#ifdef LYPHEN_HOST
 #define HOST_ONLY(x) (x)
 static int g_noThunk;                   /* harness switches: shorten the stub, silence it */
 static int g_quietThunk;
@@ -1922,7 +1945,7 @@ static void install_now(void);
 /* called instead of the hooked function; its return goes through the replay stub */
 static void hook_thunk(void)
 {
-#ifdef UMBRA_HOST
+#ifdef LYPHEN_HOST
     if (!g_quietThunk) printf("  [dbg] thunk\n");
 #endif
     g_installed_via_thunk = 1;
@@ -2144,7 +2167,7 @@ static int install_hook(void *target)
 patch_target:
     FlushInstructionCache(GetCurrentProcess(), g_trampoline, 128);
 
-#ifdef UMBRA_HOST
+#ifdef LYPHEN_HOST
     printf("  [dbg] install at=%p displaced=%d stub=%p replay=%p rel=%lld\n", (void *)at,
            displaced, (void *)stub, (void *)g_replay, (long long)(stub - (at + 5)));
 #endif
@@ -2207,14 +2230,14 @@ static int register_unwind(void)
                (DWORD64)(ULONG_PTR)base) ? 1 : 0;
 }
 
-__declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
+__declspec(dllexport) DWORD WINAPI lyphen_entry(void *parameter)
 {
     DWORD code = 0;
     (void)parameter;
-    UMBRA_TRY {
+    LYPHEN_TRY {
         code = run_entry();
     }
-    UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+    LYPHEN_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
         char line[64];
         wsprintfA(line, "fail entry code %lx", GetExceptionCode());
         put(line);
@@ -2234,13 +2257,13 @@ static DWORD run_entry(void)
     if (g_started) return 0;
     g_started = 1;
     put(register_unwind() ? "m2 unwind ok" : "m2 no unwind");
-#ifndef UMBRA_HOST
+#ifndef LYPHEN_HOST
     /* a manual map never runs DllMain, so the CFG thunks have to come up here */
     if (!g_guardReady) { g_guardReady = 1; init_guard_thunks(); }
 #endif
     stage("bus");
     GetEnvironmentVariableA("LOCALAPPDATA", path, MAX_PATH);
-    lstrcatA(path, "\\Umbra");
+    lstrcatA(path, "\\Lyphen");
     CreateDirectoryA(path, 0);
     wsprintfA(name, "\\bus-%lu.bin", GetCurrentProcessId());
     lstrcatA(path, name);
@@ -2292,7 +2315,7 @@ static DWORD run_entry(void)
     } else {
         g_apiSource = read_chunk("api.luau");
         g_runnerSource = read_chunk("runner.luau");
-        if (!g_runnerSource) fail("compile", "runner.luau missing from %LOCALAPPDATA%\\Umbra");
+        if (!g_runnerSource) fail("compile", "runner.luau missing from %LOCALAPPDATA%\\Lyphen");
         /* gettop is the trigger of choice: it is called constantly, it never throws, and it has no
            frame of its own, so replaying its prologue cannot disturb error handling. The trampoline
            page carries no unwind info, so a throwing function is the wrong place to stand in. */
@@ -2316,10 +2339,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved)
     (void)self;
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
-#ifndef UMBRA_HOST
+#ifndef LYPHEN_HOST
         init_guard_thunks();
 #endif
-        /* the host calls umbra_entry through the hijacked thread, not from here: DllMain
+        /* the host calls lyphen_entry through the hijacked thread, not from here: DllMain
            has a loader lock and every scan would be riskier inside it */
         stage("attach");
     }

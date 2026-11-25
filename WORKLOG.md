@@ -6,7 +6,7 @@ One line per work block: what changed, what was measured, what is next.
 - 2026-11-24 17:00 · Found live `lua_State` structurally: L+0x58=ci, L+0x68=shared global object, L+0x80=top; `global_State` object at 0x2144daf2160 has mainthread at +0x2f0. TString layout measured (data +0x18, len +0x14); "loadstring" TString = 0x22620252e10.
 - 2026-11-24 17:05 · Client was sitting in tray at Home (no game). Deep link `Start-Process roblox://experiences/start?placeId=3381587` launches a join; log shows experience_launch_begin. Left it at Home to avoid account risk during switch.
 - 2026-11-24 17:15 · Persisted MISSION/DIRECTIVES + context system; next: find luaB_loadstring through globals table, then luau_load signature, then native call.
-- 2026-11-24 13:40 · server rebuilt properly: 6 ordered categories, 16 channels, 7 roles, VIEW-gated downloads + staff, read-only info, community features on (rules screening, welcome screen, announcement channel, verification level 2), icon, plain-English copy. umbra_discord.py now has apply/doctor/seed --clear and is idempotent. One manual step left: drag the bot role above the rest, the API clamps positions to its managed role.
+- 2026-11-24 13:40 · server rebuilt properly: 6 ordered categories, 16 channels, 7 roles, VIEW-gated downloads + staff, read-only info, community features on (rules screening, welcome screen, announcement channel, verification level 2), icon, plain-English copy. lyphen_discord.py now has apply/doctor/seed --clear and is idempotent. One manual step left: drag the bot role above the rest, the API clamps positions to its managed role.
 - 2026-11-24 22:10 · tickets: close was swallowed by the `ticket:` prefix so every Close click opened a new ticket. Close now runs first, deletes the thread (archive is only the fallback), and the opener or staff may fire it. Repeat opens bump the existing thread instead of stacking duplicates. Help opens a modal form, so there is no template to copy. Products panel rewritten onto one PRODUCTS table with aliases, which is what the all-three button needed: its id must normalise to `bundle`.
 - 2026-11-24 22:35 · menu carries 14 shipped scripts (`src/luau/library/`, inlined by `tools/build_menu.py` between generated markers, `--check` in CI terms). Load button runs one without loadstring, edit drops it in the editor, search filters. Panel opens and closes on a 0.16 s tween and toasts the result.
 - 2026-11-24 23:05 · executor: two surfaces (executor window, spoofer window), display/text/mono faces instead of one default, 120-180 ms hover and page motion, home page with quick scripts. Spoofer is a real one: identity read, per-field regenerate, backup first, restore, profiles, admin banner with a copyable `Start-Process -Verb RunAs` prompt, and an account-location card that calls the client's own endpoint and learns the country ids it sees. docs/account-location.md records what is measured and what can revert.
@@ -46,3 +46,18 @@ One line per work block: what changed, what was measured, what is next.
 - `release.sh` needed `-Wl,--allow-multiple-definition`: mingw's pesect.o and the CRT both define
   `_IsNonwritableInCurrentImage` once image sections are touched.
 - Shipped 0.1.8-dev (fa2d047f...), asset + hash posted, mail and relay pinged to the Windows side.
+
+## windows, hijack + rename
+
+- CreateRemoteThread is dead inside the client: a thread created at kernel32!Sleep exits
+  STATUS_INVALID_THREAD (0xC000071C) in 300 ms without executing. Own-thread fallback removed.
+- install is now: suspend a client thread, point rip at a stub that saves 15 regs + rflags + rsp,
+  calls the entry, restores, jumps back. three threads pinned, plus apcs, entry self-guards.
+- mapper fixes that mattered: reloc table needs rva->file-offset (only mingw builds had an empty
+  reloc dir, so the old code never noticed), imports need per-process rebasing via toolhelp, the
+  COFF entry is DllMain which a manual map never calls so the export is called instead, and the
+  payload registers its own .pdata with RtlAddFunctionTable or no __try works at all.
+- product renamed umbra -> lyphen everywhere (paths, pipe names, %LOCALAPPDATA%, types, docs).
+- wall: client text is packed. only pages the game has already executed read back, the rest is
+  zeros, so every anchor reports "unmeasured" and calibrate() faults inside the string->ref path
+  and takes the client down with it even though the handler catches the fault.

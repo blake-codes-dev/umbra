@@ -2,11 +2,11 @@
 -- desc: removes darkness without touching your other lighting settings
 local Lighting = game:GetService("Lighting")
 
-if _G.__umbraBright then
-    for prop, value in pairs(_G.__umbraBright) do Lighting[prop] = value end
-    _G.__umbraBright = nil
+if _G.__lyphenBright then
+    for prop, value in pairs(_G.__lyphenBright) do Lighting[prop] = value end
+    _G.__lyphenBright = nil
 else
-    _G.__umbraBright = {
+    _G.__lyphenBright = {
         Ambient = Lighting.Ambient,
         OutdoorAmbient = Lighting.OutdoorAmbient,
         Brightness = Lighting.Brightness,

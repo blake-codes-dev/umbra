@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>Lyphen</AssemblyName>
+    <RootNamespace>Lyphen</RootNamespace>
+    <ApplicationIcon />
+    <Version>0.1.0</Version>
+    <!-- lets a linux/wsl box compile the windows target, still fine on windows -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- shipped script library: the executor pane and the in-game panel share these files -->
+  <ItemGroup>
+    <None Include="..\..\luau\library\*.luau" Link="library\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\luau\menu.luau" Link="library\menu.luau" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- the runner payload the core loads out of %LOCALAPPDATA%: copied next to the exe, then
+       staged by Runtime.EnsureRuntime on launch -->
+  <ItemGroup>
+    <None Include="..\..\luau\runner.luau" Link="luau/runner.luau" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\luau\api.luau" Link="luau/api.luau" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="payload/core.dll" Link="payload/core.dll" CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('payload/core.dll')" />
+  </ItemGroup>
+</Project>

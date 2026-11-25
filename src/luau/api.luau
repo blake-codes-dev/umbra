@@ -1,7 +1,7 @@
 --!nocheck
--- Umbra executor API, written in Luau because that is where it is cheap.
+-- Lyphen executor API, written in Luau because that is where it is cheap.
 --
--- Native supplies three bridges: `__umbraFile`, `__umbraHttp`, `__umbraInput`.
+-- Native supplies three bridges: `__lyphenFile`, `__lyphenHttp`, `__lyphenInput`.
 -- Everything below is built from them plus debug.*, so a missing bridge degrades one
 -- function with a clear error instead of a broken env.
 local bridge = ...
@@ -115,7 +115,7 @@ api.getconnections = function(signal)
     local list = {}
     if not signal.Connect then return list end
     -- the connection table is not exposed; the core fills this once the signal bridge lands
-    local cached = signal.__umbraConnections
+    local cached = signal.__lyphenConnections
     if cached then return cached end
     return list
 end
@@ -189,7 +189,7 @@ api.isrbxactive = function()
 end
 
 api.identifyexecutor = function()
-    return "Umbra", (bridge and bridge.version) or "0.1.0"
+    return "Lyphen", (bridge and bridge.version) or "0.1.0"
 end
 
 api.getthreadidentity = function() return 8 end

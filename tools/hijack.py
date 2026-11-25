@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
-PIPE_NAME = (chr(92) * 2 + "." + chr(92) + "pipe" + chr(92) + "umbra_stub").encode("ascii")
+PIPE_NAME = (chr(92) * 2 + "." + chr(92) + "pipe" + chr(92) + "lyphen_stub").encode("ascii")
 THREAD_ALL = 0x1F03FF
 CONTEXT_CONTROL_INTEGER = 0x00100003
 RIP_OFFSET = 0xF8

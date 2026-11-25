@@ -3,8 +3,8 @@
 local VirtualUser = game:GetService("VirtualUser")
 local player = game:GetService("Players").LocalPlayer
 
-if _G.__umbraAfk then _G.__umbraAfk:Disconnect() end
-_G.__umbraAfk = player.Idled:Connect(function()
+if _G.__lyphenAfk then _G.__lyphenAfk:Disconnect() end
+_G.__lyphenAfk = player.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
 end)

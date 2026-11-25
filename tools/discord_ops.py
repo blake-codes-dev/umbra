@@ -17,7 +17,7 @@ Usage
   python tools/discord_ops.py status
   python tools/discord_ops.py post --channel changelog --text "v0.1.0 ..."
   python tools/discord_ops.py post --channel announcements --title "Launch" --text "..."
-  python tools/discord_ops.py upload --channel downloads --file dist/umbra.zip --text "v0.1.0"
+  python tools/discord_ops.py upload --channel downloads --file dist/lyphen.zip --text "v0.1.0"
   python tools/discord_ops.py invite
   python tools/discord_ops.py role --user 123 --role Buyer
   python tools/discord_ops.py dm --user 123 --text "thanks for testing"
@@ -103,7 +103,7 @@ def request(method: str, path: str, payload: dict | None = None, raw: bytes | No
             content_type: str = "application/json") -> dict | list | None:
     url = path if path.startswith("http") else API + path
     body = raw if raw is not None else (json.dumps(payload).encode() if payload else None)
-    headers = {"Authorization": f"Bot {token()}", "User-Agent": "UmbraOps/1.0"}
+    headers = {"Authorization": f"Bot {token()}", "User-Agent": "LyphenOps/1.0"}
     if body:
         headers["Content-Type"] = content_type
 
@@ -131,7 +131,7 @@ def request(method: str, path: str, payload: dict | None = None, raw: bytes | No
 
 
 def multipart(channel_id: str, path: Path, text: str) -> dict:
-    boundary = "----umbra" + uuid.uuid4().hex
+    boundary = "----lyphen" + uuid.uuid4().hex
     parts: list[bytes] = []
     if text:
         parts += [f"--{boundary}".encode(), b'Content-Disposition: form-data; name="payload_json"',
@@ -319,7 +319,7 @@ def main(argv=None) -> int:
     for name in ("whoami", "status", "invite-url"):
         sub.add_parser(name)
     p_setup = sub.add_parser("setup")
-    p_setup.add_argument("--name", default="Umbra")
+    p_setup.add_argument("--name", default="Lyphen")
     p_post = sub.add_parser("post")
     p_post.add_argument("--channel", required=True)
     p_post.add_argument("--text", required=True)

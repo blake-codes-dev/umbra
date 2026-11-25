@@ -15,17 +15,17 @@ Everything below is the same job by hand, plus the parts that are Windows-only.
 Only needed if the container recipe breaks. Needs the .NET 9 SDK, elevated, **from the repo root**.
 
 ```powershell
-cd src\app\Umbra
+cd src\app\Lyphen
 dotnet restore
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
 ```
 
-Output: `src\app\Umbra\bin\Release\net9.0-windows\win-x64\publish\Umbra.exe`.
+Output: `src\app\Lyphen\bin\Release\net9.0-windows\win-x64\publish\Lyphen.exe`.
 Self-contained so a user without .NET can run it; single-file so there is one artifact to hash.
 
 If publish fails on `System.Management` in single-file mode, drop
 `-p:IncludeNativeLibrariesForSelfExtract=true` first. If it fails on the `library\*.luau` copy
-items, the folder moved — fix the `..\..\luau\library` glob in `Umbra.csproj` rather than
+items, the folder moved — fix the `..\..\luau\library` glob in `Lyphen.csproj` rather than
 deleting the items.
 
 Note for anyone editing XAML: **event handlers are `public` on purpose.** BAML resolves them by
@@ -61,7 +61,7 @@ broken”, which is the difference between an hour and a day.
 ## 3. Hash and stage
 
 ```powershell
-Get-FileHash .\Umbra.exe -Algorithm SHA256 | Format-List
+Get-FileHash .\Lyphen.exe -Algorithm SHA256 | Format-List
 ```
 
 Record version + hash in `WORKLOG.md`, then post to `#builds` behind the role gate. Two builds
@@ -73,7 +73,7 @@ The spoofer needs admin for HKLM writes. Settings → Administrator and the spoo
 hand the user this, already filled in:
 
 ```powershell
-Start-Process -FilePath "C:\path\to\Umbra.exe" -Verb RunAs
+Start-Process -FilePath "C:\path\to\Lyphen.exe" -Verb RunAs
 ```
 
 No persistent scheduled task, no service, no stored password — elevation is per launch and the

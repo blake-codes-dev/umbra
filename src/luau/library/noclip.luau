@@ -3,11 +3,11 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-if _G.__umbraNoclip then
-    _G.__umbraNoclip:Disconnect()
-    _G.__umbraNoclip = nil
+if _G.__lyphenNoclip then
+    _G.__lyphenNoclip:Disconnect()
+    _G.__lyphenNoclip = nil
 else
-    _G.__umbraNoclip = RunService.Stepped:Connect(function()
+    _G.__lyphenNoclip = RunService.Stepped:Connect(function()
         local char = Players.LocalPlayer.Character
         if not char then return end
         for _, part in ipairs(char:GetDescendants()) do

@@ -8,9 +8,9 @@ int never(const void *) { return 0; }
 
 }  // namespace
 
-extern "C" const void *const umbra_type_info_vftable[8] = {
+extern "C" const void *const lyphen_type_info_vftable[8] = {
     (const void *)noop, (const void *)noop, (const void *)noop, (const void *)noop,
     (const void *)never, (const void *)never,
 };
 
-#pragma comment(linker, "/alternatename:??_7type_info@@6B@=umbra_type_info_vftable")
+#pragma comment(linker, "/alternatename:??_7type_info@@6B@=lyphen_type_info_vftable")

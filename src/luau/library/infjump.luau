@@ -3,11 +3,11 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
-if _G.__umbraInfJump then
-    _G.__umbraInfJump:Disconnect()
-    _G.__umbraInfJump = nil
+if _G.__lyphenInfJump then
+    _G.__lyphenInfJump:Disconnect()
+    _G.__lyphenInfJump = nil
 else
-    _G.__umbraInfJump = UserInputService.JumpRequest:Connect(function()
+    _G.__lyphenInfJump = UserInputService.JumpRequest:Connect(function()
         local char = Players.LocalPlayer.Character
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
         if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end

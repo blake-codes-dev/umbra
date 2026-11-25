@@ -23,11 +23,11 @@ Deliberately not touched: SMBIOS (needs a flash utility), GPU/driver ids (break 
 - Reading always works, `SystemInfo` is pure WMI/registry and safe.
 - Writing requires administrator, so the window shows a banner, a `Start-Process -Verb RunAs`
   relaunch, and a copyable prompt for users who would rather run it themselves.
-- Every apply **backs up the originals first** to `%LOCALAPPDATA%\Umbra\identity-backup.json`
+- Every apply **backs up the originals first** to `%LOCALAPPDATA%\Lyphen\identity-backup.json`
   (written once, never overwritten by a later apply) and `Restore original` writes them back.
 - Per-field results are reported. A field that fails says so; nothing is claimed as done that
   is not.
-- Profiles (`%LOCALAPPDATA%\Umbra\profiles.json`) are named identity sets — one per account or
+- Profiles (`%LOCALAPPDATA%\Lyphen\profiles.json`) are named identity sets — one per account or
   per store — and loading one fills the fields without writing.
 
 ## Hazards to keep in the README

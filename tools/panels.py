@@ -26,7 +26,7 @@ def api(method: str, path: str, payload: dict | None = None):
     req = urllib.request.Request(API + path, data=data, method=method)
     req.add_header("Authorization", "Bot " + TOKEN)
     req.add_header("Content-Type", "application/json")
-    req.add_header("User-Agent", "UmbraPanels")
+    req.add_header("User-Agent", "LyphenPanels")
     try:
         with urllib.request.urlopen(req, timeout=30) as response:
             body = response.read()

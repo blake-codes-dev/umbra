@@ -1,7 +1,7 @@
 --!nocheck
 -- name: mod menu
 -- desc: the panel itself, tabs and shipped scripts, run this one
--- Umbra menu. Single file, no dependencies, no loadstring.
+-- Lyphen menu. Single file, no dependencies, no loadstring.
 -- Toggle with RightShift. Drag with the title bar. Config is per-place.
 
 local Players = game:GetService("Players")
@@ -143,7 +143,7 @@ end
 -- window ---------------------------------------------------------------
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "UmbraMenu"
+gui.Name = "LyphenMenu"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -202,7 +202,7 @@ dot.BorderSizePixel = 0
 dot.Parent = titleBar
 corner(dot, 4)
 
-local brand = label(titleBar, "UMBRA", 12, TEXT, true)
+local brand = label(titleBar, "LYPHEN", 12, TEXT, true)
 brand.Position = UDim2.new(0, 26, 0, 9)
 brand.Size = UDim2.new(0, 120, 0, 16)
 
@@ -525,11 +525,11 @@ player.CharacterAdded:Connect(set)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
-if _G.__umbraInfJump then
-    _G.__umbraInfJump:Disconnect()
-    _G.__umbraInfJump = nil
+if _G.__lyphenInfJump then
+    _G.__lyphenInfJump:Disconnect()
+    _G.__lyphenInfJump = nil
 else
-    _G.__umbraInfJump = UserInputService.JumpRequest:Connect(function()
+    _G.__lyphenInfJump = UserInputService.JumpRequest:Connect(function()
         local char = Players.LocalPlayer.Character
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
         if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
@@ -540,11 +540,11 @@ end
         local Players = game:GetService("Players")
         local UserInputService = game:GetService("UserInputService")
 
-        if _G.__umbraInfJump then
-            _G.__umbraInfJump:Disconnect()
-            _G.__umbraInfJump = nil
+        if _G.__lyphenInfJump then
+            _G.__lyphenInfJump:Disconnect()
+            _G.__lyphenInfJump = nil
         else
-            _G.__umbraInfJump = UserInputService.JumpRequest:Connect(function()
+            _G.__lyphenInfJump = UserInputService.JumpRequest:Connect(function()
                 local char = Players.LocalPlayer.Character
                 local humanoid = char and char:FindFirstChildOfClass("Humanoid")
                 if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
@@ -556,11 +556,11 @@ end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-if _G.__umbraNoclip then
-    _G.__umbraNoclip:Disconnect()
-    _G.__umbraNoclip = nil
+if _G.__lyphenNoclip then
+    _G.__lyphenNoclip:Disconnect()
+    _G.__lyphenNoclip = nil
 else
-    _G.__umbraNoclip = RunService.Stepped:Connect(function()
+    _G.__lyphenNoclip = RunService.Stepped:Connect(function()
         local char = Players.LocalPlayer.Character
         if not char then return end
         for _, part in ipairs(char:GetDescendants()) do
@@ -573,11 +573,11 @@ end
         local Players = game:GetService("Players")
         local RunService = game:GetService("RunService")
 
-        if _G.__umbraNoclip then
-            _G.__umbraNoclip:Disconnect()
-            _G.__umbraNoclip = nil
+        if _G.__lyphenNoclip then
+            _G.__lyphenNoclip:Disconnect()
+            _G.__lyphenNoclip = nil
         else
-            _G.__umbraNoclip = RunService.Stepped:Connect(function()
+            _G.__lyphenNoclip = RunService.Stepped:Connect(function()
                 local char = Players.LocalPlayer.Character
                 if not char then return end
                 for _, part in ipairs(char:GetDescendants()) do
@@ -613,8 +613,8 @@ if humanoid then humanoid.Health = 0 end
 local VirtualUser = game:GetService("VirtualUser")
 local player = game:GetService("Players").LocalPlayer
 
-if _G.__umbraAfk then _G.__umbraAfk:Disconnect() end
-_G.__umbraAfk = player.Idled:Connect(function()
+if _G.__lyphenAfk then _G.__lyphenAfk:Disconnect() end
+_G.__lyphenAfk = player.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
 end)
@@ -623,8 +623,8 @@ end)
         local VirtualUser = game:GetService("VirtualUser")
         local player = game:GetService("Players").LocalPlayer
 
-        if _G.__umbraAfk then _G.__umbraAfk:Disconnect() end
-        _G.__umbraAfk = player.Idled:Connect(function()
+        if _G.__lyphenAfk then _G.__lyphenAfk:Disconnect() end
+        _G.__lyphenAfk = player.Idled:Connect(function()
             VirtualUser:CaptureController()
             VirtualUser:ClickButton2(Vector2.new())
         end)
@@ -687,11 +687,11 @@ print("position: " .. text)
       source = [==[
 local Lighting = game:GetService("Lighting")
 
-if _G.__umbraBright then
-    for prop, value in pairs(_G.__umbraBright) do Lighting[prop] = value end
-    _G.__umbraBright = nil
+if _G.__lyphenBright then
+    for prop, value in pairs(_G.__lyphenBright) do Lighting[prop] = value end
+    _G.__lyphenBright = nil
 else
-    _G.__umbraBright = {
+    _G.__lyphenBright = {
         Ambient = Lighting.Ambient,
         OutdoorAmbient = Lighting.OutdoorAmbient,
         Brightness = Lighting.Brightness,
@@ -706,11 +706,11 @@ end
       code = function()
         local Lighting = game:GetService("Lighting")
 
-        if _G.__umbraBright then
-            for prop, value in pairs(_G.__umbraBright) do Lighting[prop] = value end
-            _G.__umbraBright = nil
+        if _G.__lyphenBright then
+            for prop, value in pairs(_G.__lyphenBright) do Lighting[prop] = value end
+            _G.__lyphenBright = nil
         else
-            _G.__umbraBright = {
+            _G.__lyphenBright = {
                 Ambient = Lighting.Ambient,
                 OutdoorAmbient = Lighting.OutdoorAmbient,
                 Brightness = Lighting.Brightness,
@@ -728,15 +728,15 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
-if _G.__umbraFreecam then
-    _G.__umbraFreecam:Disconnect()
-    _G.__umbraFreecam = nil
+if _G.__lyphenFreecam then
+    _G.__lyphenFreecam:Disconnect()
+    _G.__lyphenFreecam = nil
     Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 else
     local camera = Workspace.CurrentCamera
     local speed = 60
     camera.CameraType = Enum.CameraType.Scriptable
-    _G.__umbraFreecam = RunService.RenderStepped:Connect(function(dt)
+    _G.__lyphenFreecam = RunService.RenderStepped:Connect(function(dt)
         local direction = Vector3.zero
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction += camera.CFrame.LookVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction -= camera.CFrame.LookVector end
@@ -753,15 +753,15 @@ end
         local RunService = game:GetService("RunService")
         local UserInputService = game:GetService("UserInputService")
 
-        if _G.__umbraFreecam then
-            _G.__umbraFreecam:Disconnect()
-            _G.__umbraFreecam = nil
+        if _G.__lyphenFreecam then
+            _G.__lyphenFreecam:Disconnect()
+            _G.__lyphenFreecam = nil
             Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
         else
             local camera = Workspace.CurrentCamera
             local speed = 60
             camera.CameraType = Enum.CameraType.Scriptable
-            _G.__umbraFreecam = RunService.RenderStepped:Connect(function(dt)
+            _G.__lyphenFreecam = RunService.RenderStepped:Connect(function(dt)
                 local direction = Vector3.zero
                 if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction += camera.CFrame.LookVector end
                 if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction -= camera.CFrame.LookVector end
@@ -777,11 +777,11 @@ end
       source = [==[
 local RunService = game:GetService("RunService")
 
-if _G.__umbraSpin then
-    _G.__umbraSpin:Disconnect()
-    _G.__umbraSpin = nil
+if _G.__lyphenSpin then
+    _G.__lyphenSpin:Disconnect()
+    _G.__lyphenSpin = nil
 else
-    _G.__umbraSpin = RunService.RenderStepped:Connect(function(dt)
+    _G.__lyphenSpin = RunService.RenderStepped:Connect(function(dt)
         local char = game:GetService("Players").LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if root then root.CFrame = root.CFrame * CFrame.Angles(0, dt * 6, 0) end
@@ -791,11 +791,11 @@ end
       code = function()
         local RunService = game:GetService("RunService")
 
-        if _G.__umbraSpin then
-            _G.__umbraSpin:Disconnect()
-            _G.__umbraSpin = nil
+        if _G.__lyphenSpin then
+            _G.__lyphenSpin:Disconnect()
+            _G.__lyphenSpin = nil
         else
-            _G.__umbraSpin = RunService.RenderStepped:Connect(function(dt)
+            _G.__lyphenSpin = RunService.RenderStepped:Connect(function(dt)
                 local char = game:GetService("Players").LocalPlayer.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
                 if root then root.CFrame = root.CFrame * CFrame.Angles(0, dt * 6, 0) end
@@ -1094,7 +1094,7 @@ show()
 
 pcall(function()
     StarterGui:SetCore("SendNotification", {
-        Title = "Umbra",
+        Title = "Lyphen",
         Text = "menu loaded, RightShift toggles",
         Duration = 4,
     })

@@ -1,4 +1,4 @@
-# Umbra menu
+# Lyphen menu
 
 `menu.luau` is the in-game panel. Runs from the executor, nothing else needed. RightShift toggles
 it, the title bar drags, tabs are Player / Visuals / World / Scripts.

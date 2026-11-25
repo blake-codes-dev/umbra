@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
-PIPE_NAME = b"\\\\.\\pipe\\umbra_stub"
+PIPE_NAME = b"\\\\.\\pipe\\lyphen_stub"
 PROCESS_ALL = 0x1F0FFF
 MEM_COMMIT_RESERVE = 0x3000
 PAGE_READWRITE = 0x04

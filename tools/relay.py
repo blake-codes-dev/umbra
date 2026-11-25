@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discord relay between the two Umbra agents, for things that need to be seen now.
+"""Discord relay between the two Lyphen agents, for things that need to be seen now.
 
 The mailbox in state/agent/mail is the durable channel and needs no network. This one exists
 because it is instant, it survives the two machines not sharing a disk, and the owner can watch it
@@ -36,7 +36,7 @@ def call(path, payload=None, method=None):
     request = urllib.request.Request(API + path, data=data,
                                      method=method or ("POST" if data else "GET"))
     request.add_header("Authorization", "Bot " + token())
-    request.add_header("User-Agent", "UmbraRelay/1.0 (agent bridge)")
+    request.add_header("User-Agent", "LyphenRelay/1.0 (agent bridge)")
     if data:
         request.add_header("Content-Type", "application/json")
     try:

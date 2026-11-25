@@ -43,6 +43,6 @@ Nothing here is ticked until it ran in a live client.
 - Bridges push `false`+reason on failure; they never throw across the C/Luau boundary.
 - Anything that parses user input is the caller's risk: `request` returns body, status and
   headers, and never throws on an HTTP error code.
-- Files are sandboxed to `%LOCALAPPDATA%\Umbra\workspace`; `..` cannot escape it.
+- Files are sandboxed to `%LOCALAPPDATA%\Lyphen\workspace`; `..` cannot escape it.
 - Hooks are reversible: `hookfunction` returns the original, and a hook that throws is
   reported with the script id so it can be undone.

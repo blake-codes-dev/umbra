@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mailbox between the two Umbra agents (container/Linux and Windows).
+"""Mailbox between the two Lyphen agents (container/Linux and Windows).
 
 The container mounts C:\\ at /config over 9p, so a file written here is readable on the Windows
 side at the matching path *immediately* - no git, no network, no polling delay. This is the

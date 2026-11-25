@@ -27,7 +27,7 @@ Card **Account location** in the spoofer window:
 2. `GET` the current country and shows `countryName · id`,
 3. `POST` the picked `targetCountryId`,
 4. reads the account **back** and reports whether it really changed,
-5. records every id→name pair it sees in `%LOCALAPPDATA%\Umbra\location-ids.json`.
+5. records every id→name pair it sees in `%LOCALAPPDATA%\Lyphen\location-ids.json`.
 
 Step 5 is why a wrong seed id self-corrects: the table ships with common regions, and any
 mismatch teaches the real pairing, so the second attempt on that country is right.

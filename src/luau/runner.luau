@@ -6,6 +6,9 @@
 local RunService = game:GetService("RunService")
 
 local BRIDGE, BUS = ...
+-- the compiler is captured once: inside a script env `loadstring` is the env's own field, so
+-- looking it up dynamically there would recurse into itself
+local rawLoad = BRIDGE.loadstring or loadstring
 -- api.luau travels as source inside the bridge and is compiled here, so the only native call
 -- is the one that starts this chunk
 local API
@@ -39,7 +42,10 @@ end
 
 --[[ one environment per script: globals do not leak between runs, but genv does ]]
 local function makeEnv(id)
-    local env = setmetatable({}, { __index = getfenv(0) })
+    local env = setmetatable({}, { __index = _G })
+    -- bridges first: they are the wider surface, and the few functions this runner must own
+    -- (print, warn, loadstring, getgenv) are assigned after so they cannot be overwritten
+    if API then API.install(env) end
     env.script = nil
     env.getgenv = function() return genv end
     env.getrenv = function() return env end
@@ -63,14 +69,12 @@ local function makeEnv(id)
 
     -- loadstring compiles against this env, never the global one
     env.loadstring = function(source, chunkName)
-        local chunk, err = loadstring(source, chunkName or ("@Umbra: " .. id))
+        local chunk, err = rawLoad(source, chunkName or ("@Umbra: " .. id))
         if not chunk then return nil, err end
         setfenv(chunk, env)
         return chunk
     end
     env.load = env.loadstring
-
-    if API then API.install(env) end
 
     env.require = function(target)
         local ok, result = pcall(require, target)

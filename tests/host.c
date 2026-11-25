@@ -74,7 +74,23 @@ static int fake_getfenv(lua_State *state)
 
 static int fake_setfenv(lua_State *state)
 {
-    lua_setfenv(state, 1);
+    lua_setfenv(state, 1);   /* pops the table, nothing is left to return */
+    return 0;
+}
+
+/* prints the failing line instead of just the message */
+int dbg_handler(lua_State *state)
+{
+    char text[2048];
+    const char *message = lua_tolstring(state, 1, 0);
+    lua_getglobal(state, "debug");
+    lua_getfield(state, -1, "traceback");
+    lua_pushlstring(state, "", 0);
+    lua_pushinteger(state, 2);
+    lua_call(state, 2, 1);
+    const char *trace = lua_tolstring(state, -1, 0);
+    snprintf(text, sizeof(text), "%s\n%s", message ? message : "(non-string)", trace ? trace : "");
+    lua_pushstring(state, text);
     return 1;
 }
 
@@ -88,10 +104,11 @@ static int signal_connect(lua_State *state)
 /* game:GetService("RunService").Heartbeat:Connect(fn) - just enough shape for the runner */
 static int get_service(lua_State *state)
 {
-    lua_createtable(state, 0, 1);
+    lua_createtable(state, 0, 1);                                /* the service */
+    lua_createtable(state, 0, 1);                                /* its signal */
     lua_pushcclosurek(state, signal_connect, 0, 0, 0);
-    lua_setfield(state, -2, "Connect");
-    lua_setfield(state, -2, "Heartbeat");
+    lua_setfield(state, -2, "Connect");                          /* signal.Connect */
+    lua_setfield(state, -2, "Heartbeat");                        /* service.Heartbeat */
     (void)state;
     return 1;
 }
@@ -217,15 +234,6 @@ int main(void)
     header()->version = BUS_VERSION;
 
     L = luaL_newstate();
-#ifdef UMBRA_HOST
-    {
-        /* does pcall work at all through the harness' own cast? */
-        g.pushcclosure = (lua_pushcclosure_t)lua_pushcclosurek;
-        g.pushcclosure(L, (void *)fake_wait, 0, 0, 0);
-        printf("  [dbg] direct pcall of a C closure -> %d (top %d)\n",
-               lua_pcall(L, 0, 0, 0), lua_gettop(L));
-    }
-#endif
     luaL_openlibs(L);
     g.state = L;
     install_fakes();
@@ -251,17 +259,27 @@ int main(void)
     CHECK(apiSource && runnerSource, "read api.luau and runner.luau");
     if (!apiSource || !runnerSource) return 1;
 
-#ifdef UMBRA_HOST
-    printf("  stack before: %d\n", lua_gettop(L));
-#endif
-    spawn_runner(L, apiSource, runnerSource);
-#ifdef UMBRA_HOST
-    printf("  stack after: %d\n", lua_gettop(L));
-#endif
+    {
+        /* run the runner through a loader so a failure shows a line number and a traceback */
+        static char wrapped[65536];
+        snprintf(wrapped, sizeof(wrapped),
+                 "local bridge, bus = ...\n"
+                 "local chunk, lerr = loadstring([==[\n%s\n]==])\n"
+                 "if not chunk then error(tostring(lerr)) end\n"
+                 "assert(chunk)\n"
+                 "local ok, err = xpcall(chunk, function(e) return e .. '\\n' .. debug.traceback('', 2) end, bridge, bus)\n"
+                 "if not ok then error(err, 0) end\n", runnerSource);
+        spawn_runner(L, apiSource, wrapped);
+    }
     pump_output(transcript, sizeof(transcript), 0);
     printf("  runner said: %s", transcript);
     CHECK(find_text(transcript, "runner up") != 0, "runner installed");
     CHECK(g_heartbeat != 0, "runner connected to Heartbeat");
+
+    /* what does a script actually see? */
+    exec("print('types', type(print), type(writefile), type(loadstring), type(setfenv), tostring(getfenv(0) == nil))",
+         transcript, sizeof(transcript));
+    printf("  exec 0: %s", transcript);
 
     /* one script, print captured */
     exec("print('hello from umbra')", transcript, sizeof(transcript));
@@ -279,10 +297,10 @@ int main(void)
     CHECK(find_text(transcript, "true") != 0, "isfile reports true");
 
     /* sandbox escape attempt must fail, not write outside the workspace */
-    exec("local ok = pcall(writefile, '../escape.txt', 'x') print(tostring(ok))",
+    exec("local ok, why = writefile('../escape.txt', 'x') print(tostring(ok), tostring(why))",
          transcript, sizeof(transcript));
     printf("  exec 3: %s", transcript);
-    CHECK(find_text(transcript, "false") != 0, ".. refused by the sandbox");
+    CHECK(find_text(transcript, "bad path") != 0, ".. refused by the sandbox");
 
     /* globals do not leak between scripts, genv does */
     exec("shared.marker = 'set' print('first')", transcript, sizeof(transcript));

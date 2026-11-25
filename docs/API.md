@@ -2,7 +2,7 @@
 
 Honest table. `luau` means implemented in `src/luau/api.luau` and working off bridges;
 `bridge` means the Luau side is done and the native closure exists in `core.c`; `todo` means
-nothing yet. A bridge in `bridge` has only been compiled, not run in a client.
+nothing yet. A bridge marked `bridge` has been run in the harness (`tests/`), not in a live client.
 
 Nothing here is ticked until it ran in a live client.
 
@@ -10,9 +10,9 @@ Nothing here is ticked until it ran in a live client.
 
 | API | Where | Status |
 |---|---|---|
-| `getgenv`, `getrenv`, `shared` | runner | luau, per-run env |
+| `getgenv`, `getrenv`, `shared` | runner | luau, per-run env (harness-proven to persist across scripts) |
 | `print` / `warn` capture | runner | luau, goes to the bus and the gui console |
-| `loadstring`, `load` | runner env | luau, compiles against the script env |
+| `loadstring`, `load` | runner env | luau, compiles through the bridge and applies the script env (harness-proven) |
 | `identifyexecutor` | api | luau |
 | `getthreadidentity` / `setthreadidentity` | api | luau (reports 8; the field write is still todo) |
 | `checkcaller` | api | luau |

@@ -294,23 +294,15 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
         return;
     }
     UMBRA_TRY {
-        push_bridge(state, apiChunk);
+        /* function first, then its arguments: pcall takes the callee from
+           L->top - (nargs + 1), so anything pushed before the callee would be called instead.
+           stack: [runner] [bridge] [bus] -> pcall(2) -> runner(bridge, bus) */
         if (load_source(state, "@Umbra/runner", chunk) != 0) {
             fail("compile", g.tolstring ? g.tolstring(state, -1, 0) : "runner did not compile");
             return;
         }
+        push_bridge(state, apiChunk);
         push_bus(state);
-#ifdef UMBRA_HOST
-        {
-            extern int printf(const char *, ...);
-            extern const char *lua_typename(lua_State *, int);
-            extern int lua_type(lua_State *, int);
-            printf("  [dbg] top=%d t1=%s t2=%s t3=%s\n", g.gettop(state),
-                   lua_typename(state, lua_type(state, -3)),
-                   lua_typename(state, lua_type(state, -2)),
-                   lua_typename(state, lua_type(state, -1)));
-        }
-#endif
         if (g.pcall(state, 2, 0, 0) != 0)
             fail("resume", g.tolstring ? g.tolstring(state, -1, 0) : "runner did not start");
     }
@@ -371,6 +363,19 @@ static void failarg(lua_State *state, const char *message)
     if (g.pushls) g.pushls(state, message, lstrlenA(message));
 }
 
+/* create each missing directory on the way to the file */
+static void make_parents(const char *full)
+{
+    char partial[MAX_PATH];
+    lstrcpyA(partial, full);
+    for (char *c = partial; *c; c++) {
+        if (*c != '\\') continue;
+        *c = 0;
+        if (lstrlenA(partial) > 3) CreateDirectoryA(partial, 0);
+        *c = '\\';
+    }
+}
+
 static int bridge_write(lua_State *state, int append)
 {
     char path[MAX_PATH];
@@ -379,6 +384,7 @@ static int bridge_write(lua_State *state, int append)
     DWORD written = 0;
     if (!argstr(state, 1, path, MAX_PATH) || !resolve_path(path)) return failarg(state, "bad path"), 2;
     if (!argstr(state, 2, text, sizeof(text))) return failarg(state, "bad body"), 2;
+    make_parents(path);
     file = CreateFileA(path, append ? FILE_APPEND_DATA : GENERIC_WRITE, 0, 0,
                        append ? OPEN_ALWAYS : CREATE_ALWAYS, 0, 0);
     if (file == INVALID_HANDLE_VALUE) return failarg(state, "open failed"), 2;
@@ -433,15 +439,8 @@ static int cb_delfile(lua_State *state)
 static int cb_makefolder(lua_State *state)
 {
     char path[MAX_PATH];
-    char partial[MAX_PATH];
     if (!argstr(state, 1, path, MAX_PATH) || !resolve_path(path)) return failarg(state, "bad path"), 2;
-    lstrcpyA(partial, path);
-    for (char *c = partial; *c; c++) {
-        if (*c != '\\') continue;
-        *c = 0;
-        if (lstrlenA(partial) > 3) CreateDirectoryA(partial, 0);
-        *c = '\\';
-    }
+    make_parents(path);
     if (g.pushboolean) g.pushboolean(state, CreateDirectoryA(path, 0) != 0);
     return 1;
 }

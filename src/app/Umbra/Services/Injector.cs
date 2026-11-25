@@ -37,6 +37,9 @@ public sealed class Injector
     private const uint PageExecuteRead = 0x20;
     private const uint MemRelease = 0x8000;
     private const uint MemPrivate = 0x20000;
+    private const uint ThreadGetContext = 0x8;
+    private const uint ThreadSetContext = 0x10;
+    private const uint ThreadSuspendResume = 0x2;
 
     /// <summary>Written into the payload's header padding so a re-inject can find and free it.</summary>
     private static readonly byte[] Marker = { (byte)'U', (byte)'M', (byte)'B', (byte)'R', (byte)'A', (byte)'1' };
@@ -121,6 +124,21 @@ public sealed class Injector
     private static extern bool GetExitCodeThread(IntPtr thread, out uint code);
 
     [DllImport("kernel32", SetLastError = true)]
+    private static extern uint ResumeThread(IntPtr thread);
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern uint SuspendThread(IntPtr thread);
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern bool FlushInstructionCache(IntPtr process, IntPtr at, UIntPtr size);
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern bool GetThreadContext(IntPtr thread, IntPtr context);
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern bool SetThreadContext(IntPtr thread, IntPtr context);
+
+    [DllImport("kernel32", SetLastError = true)]
     private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
 
     /// <summary>Queue an APC to a thread, far less visible than a thread of our own.</summary>
@@ -148,7 +166,7 @@ public sealed class Injector
         /// </summary>
     private static int QueueToThreads(IntPtr process, IntPtr start)
     {
-        const uint ThreadSetInformation = 0x20;
+        const uint ThreadSetContext = 0x10;      /* required to queue an apc, THREAD_SET_INFORMATION is not */
         const uint ThreadSuspendResume = 0x2;
         var pid = GetProcessId(process);
         var snapshot = CreateToolhelp32Snapshot(0x4, (uint)pid);
@@ -162,7 +180,7 @@ public sealed class Injector
             do
             {
                 if (entry.OwnerPid != pid) continue;
-                var thread = OpenThread(ThreadSetInformation | ThreadSuspendResume, false, entry.ThreadId);
+                var thread = OpenThread(ThreadSetContext | ThreadSuspendResume, false, entry.ThreadId);
                 if (thread == IntPtr.Zero) continue;
                 if (QueueUserAPC(start, thread, IntPtr.Zero)) queued++;
                 CloseHandle(thread);
@@ -233,7 +251,7 @@ public sealed class Injector
             if (stale != IntPtr.Zero) FreePrevious(process, stale);
 
             var remote = VirtualAllocEx(process, IntPtr.Zero, (UIntPtr)pe.SizeOfImage,
-                MemCommitReserve, PageReadWrite);
+                MemCommitReserve, PageExecuteReadWrite);
             if (remote == IntPtr.Zero) return new(false, "allocation failed", pid);
 
             try
@@ -264,20 +282,41 @@ public sealed class Injector
                 var entryRva = pe.Export("umbra_entry");
                 if (entryRva == 0) entryRva = pe.EntryPoint;
                 var start = remote + (nint)entryRva;
+                if (VirtualQueryEx(process, start, out var region, (UIntPtr)System.Runtime.InteropServices.Marshal.SizeOf<Region>()) != IntPtr.Zero)
+                    Console.WriteLine($"  start region base {region.Base.ToInt64():x} size {region.RegionSize.ToInt64():x} state {region.State:x} protect {region.Protect:x}");
                 var probe = new byte[16];
                 var got = ReadProcessMemory(process, start, probe, (UIntPtr)16, out var nread);
                 var wantAt = pe.OffsetOf(entryRva);
+                Console.WriteLine($"  k32 local {GetModuleHandleA("kernel32.dll").ToInt64():x} remote {(PeImage.RemoteModulePublic(process, "kernel32.dll")).ToInt64():x}");
                 Console.WriteLine($"  entry rva {entryRva:x} at {start.ToInt64():x} read {got}/{nread} bytes {BitConverter.ToString(probe)} want {BitConverter.ToString(image, wantAt, 16)}");
-                Protect(process, remote, pe.SizeOfImage, PageExecuteReadWrite);
+                /* whole image writable+executable first (what hyperion tolerates best), then the
+                   sections settle: code executes, data stays writable */
+                // left as allocated: executable+writable from the start, nothing to transition
+                foreach (var section in pe.Sections)
+                {
+                    var page = section.Name == ".text" ? PageExecuteRead : PageReadWrite;
+                    VirtualProtectEx(process, remote + (int)section.VirtualAddress,
+                        (UIntPtr)Math.Max(section.VirtualSize, 0x1000u), page, out _);
+                }
+                VirtualProtectEx(process, remote, (UIntPtr)pe.SizeOfHeaders, PageExecuteRead, out _);
+                foreach (var section in pe.Sections)
+                {
+                    var at0 = remote + (int)section.VirtualAddress;
+                    if (VirtualQueryEx(process, at0, out var q, (UIntPtr)System.Runtime.InteropServices.Marshal.SizeOf<Region>()) != IntPtr.Zero)
+                        Console.WriteLine($"  {section.Name} protect {q.Protect:x}");
+                    else Console.WriteLine($"  {section.Name} query failed");
+                }
 
-                // the entry is guarded, so being handed to several threads is harmless
+                /* client threads and apcs, never a thread of our own: hyperion kills those */
                 var queued = Injector.QueueToThreads(process, start);
+                var hijacked = Injector.HijackThreads(process, start, 3);
+                Console.WriteLine($"  apc {queued} pinned {hijacked}");
                 var how = $"mapped {pe.SizeOfImage / 1024} KB";
                 var pipe = @"\\.\pipe\umbra-" + pid;
                 var ready = false;
-                for (var i = 0; i < 40; i++)
+                for (var i = 0; i < 120; i++)
                 {
-                    if (Directory.GetFiles(@"\\.\pipe\", $"umbra-{pid}").Length > 0 || WaitNamedPipe(pipe, 0))
+                    if (Directory.GetFiles(@"//./pipe/", $"umbra-{pid}").Length > 0)
                     {
                         ready = true;
                         break;
@@ -285,10 +324,9 @@ public sealed class Injector
                     Thread.Sleep(50);
                 }
 
-                if (!ready)
+                if (!ready && queued == 0 && hijacked == 0)
                 {
-                    // nothing became alertable in two seconds: fall back to a thread, visibly
-                    queued = 0;
+                    // no thread could be taken: fall back to one of our own, visibly
                     var thread = CreateRemoteThread(process, IntPtr.Zero, UIntPtr.Zero, start, IntPtr.Zero, 0, out _);
                     if (thread == IntPtr.Zero)
                         return new(false, "neither an apc nor a thread took", pid);
@@ -298,13 +336,13 @@ public sealed class Injector
                     CloseHandle(thread);
                     for (var i = 0; i < 40; i++)
                     {
-                        if (Directory.GetFiles(@"\\.\pipe\", $"umbra-{pid}").Length > 0) break;
+                        if (Directory.GetFiles(@"//./pipe/", $"umbra-{pid}").Length > 0) break;
                         Thread.Sleep(50);
                     }
                     return new(true, how + ", own thread", pid);
                 }
 
-                return new(true, $"{how}, on {queued} existing thread{(queued == 1 ? "" : "s")}", pid);
+                return new(true, $"{how}, {queued} apc / {hijacked} pinned", pid);
             }
             catch (Exception)
             {
@@ -362,6 +400,134 @@ public sealed class Injector
 
     private static void Protect(IntPtr process, IntPtr at, uint size, uint page) =>
         VirtualProtectEx(process, at, (UIntPtr)size, page, out _);
+
+    /// <summary>
+    /// Runs <paramref name="start"/> on a thread the client already has. Hyperion kills a thread
+    /// we create, so instead one client thread is suspended, pointed at a stub that saves every
+    /// register, calls us, restores everything and jumps back where it left off.
+    /// </summary>
+    /* A thread parked in a kernel wait gets its rip restored from the trap frame on return, so a
+       single hijack is a coin toss; take a few and let the entry's own guard pick the winner. */
+    private static int HijackThreads(IntPtr process, IntPtr start, int want)
+    {
+        var page = VirtualAllocEx(process, IntPtr.Zero, (UIntPtr)0x1000, MemCommitReserve, PageExecuteReadWrite);
+        if (page == IntPtr.Zero) return 0;
+        var slotRip = page + 0xF00;
+        var slotRsp = page + 0xF08;
+        if (!Write(process, page, Stub(start, slotRip, slotRsp))) return 0;
+        FlushInstructionCache(process, page, (UIntPtr)0x100);
+
+        var pid = GetProcessId(process);
+        var snapshot = CreateToolhelp32Snapshot(0x4, (uint)pid);
+        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return 0;
+        var box = Marshal.AllocHGlobal(0x500);
+        var taken = 0;
+        try
+        {
+            var entry = new ThreadEntry { Size = (uint)Marshal.SizeOf<ThreadEntry>() };
+            if (!Thread32First(snapshot, ref entry)) return 0;
+            var skip = taken % 8;              /* spread picks so a retry lands elsewhere */
+            do
+            {
+                if (taken >= want) break;
+                if (entry.OwnerPid != pid) continue;
+                var thread = OpenThread(ThreadGetContext | ThreadSetContext | ThreadSuspendResume, false, entry.ThreadId);
+                if (thread == IntPtr.Zero) continue;
+                try
+                {
+                    if (SuspendThread(thread) == 0xFFFFFFFF) continue;
+                    Marshal.WriteInt32(box, 0x30, 0x10001F);
+                    if (!GetThreadContext(thread, box)) { ResumeThread(thread); continue; }
+                    if (!Write(process, slotRip, BitConverter.GetBytes(Marshal.ReadInt64(box, 0xF8))))
+                    {
+                        ResumeThread(thread);
+                        continue;
+                    }
+                    Marshal.WriteInt64(box, 0xF8, page.ToInt64());
+                    var set = SetThreadContext(thread, box);
+                    ResumeThread(thread);
+                    if (set) { taken++; Thread.Sleep(120); }
+                }
+                finally { CloseHandle(thread); }
+            } while (Thread32Next(snapshot, ref entry));
+        }
+        finally { Marshal.FreeHGlobal(box); CloseHandle(snapshot); }
+        return taken;
+    }
+
+    private static bool HijackThread(IntPtr process, IntPtr start)
+    {
+        var pid = GetProcessId(process);
+        var snapshot = CreateToolhelp32Snapshot(0x4, (uint)pid);
+        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return false;
+
+        var page = VirtualAllocEx(process, IntPtr.Zero, (UIntPtr)0x1000, MemCommitReserve, PageExecuteReadWrite);
+        if (page == IntPtr.Zero) { CloseHandle(snapshot); return false; }
+        var slotRip = page + 0xF00;
+        var slotRsp = page + 0xF08;
+        if (!Write(process, page, Stub(start, slotRip, slotRsp))) { CloseHandle(snapshot); return false; }
+        FlushInstructionCache(process, page, (UIntPtr)0x100);
+
+        var box = Marshal.AllocHGlobal(0x500);
+        try
+        {
+            var entry = new ThreadEntry { Size = (uint)Marshal.SizeOf<ThreadEntry>() };
+            if (!Thread32First(snapshot, ref entry)) return false;
+            do
+            {
+                if (entry.OwnerPid != pid) continue;
+                var thread = OpenThread(ThreadGetContext | ThreadSetContext | ThreadSuspendResume, false, entry.ThreadId);
+                if (thread == IntPtr.Zero) continue;
+                try
+                {
+                    if (SuspendThread(thread) == 0xFFFFFFFF) continue;
+                    Marshal.WriteInt32(box, 0x30, 0x10001F);
+                    if (!GetThreadContext(thread, box)) { ResumeThread(thread); continue; }
+                    if (!Write(process, slotRip, BitConverter.GetBytes(Marshal.ReadInt64(box, 0xF8))))
+                    {
+                        ResumeThread(thread);
+                        continue;
+                    }
+                    Marshal.WriteInt64(box, 0xF8, page.ToInt64());
+                    var set = SetThreadContext(thread, box);
+                    ResumeThread(thread);
+                    if (set) return true;
+                }
+                finally { CloseHandle(thread); }
+            } while (Thread32Next(snapshot, ref entry));
+        }
+        finally { Marshal.FreeHGlobal(box); CloseHandle(snapshot); }
+        return false;
+    }
+
+    /* push everything, call, pop everything, jump back. rsp is saved and restored too, and the
+       stack is re-aligned so the call sees a normal frame. */
+    private static byte[] Stub(IntPtr entry, IntPtr slotRip, IntPtr slotRsp)
+    {
+        var code = new List<byte>();
+        void Mov(byte lo, byte hi, IntPtr value) { code.Add(lo); code.Add(hi); code.AddRange(BitConverter.GetBytes(value.ToInt64())); }
+        Mov(0x49, 0xBB, slotRsp);            // mov r11, slotRsp
+        code.AddRange(new byte[] { 0x49, 0x89, 0x23 });   // mov [r11], rsp
+        code.Add(0x9C);                                   // pushfq
+        foreach (var r in new byte[] { 0x50, 0x51, 0x52, 0x53, 0x55, 0x56, 0x57 })
+            code.Add(r);
+        code.AddRange(new byte[] { 0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53,
+                                   0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57 });
+        code.AddRange(new byte[] { 0x48, 0x83, 0xEC, 0x08 });   // sub rsp, 8
+        Mov(0x48, 0xB8, entry);                               // mov rax, entry
+        code.AddRange(new byte[] { 0xFF, 0xD0 });             // call rax
+        code.AddRange(new byte[] { 0x48, 0x83, 0xC4, 0x08 });   // add rsp, 8
+        code.AddRange(new byte[] { 0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C,
+                                   0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58 });
+        foreach (var r in new byte[] { 0x5F, 0x5E, 0x5D, 0x5B, 0x5A, 0x59, 0x58 })
+            code.Add(r);
+        code.Add(0x9D);                                       // popfq
+        Mov(0x49, 0xBB, slotRsp);
+        code.AddRange(new byte[] { 0x49, 0x8B, 0x23 });   // mov rsp, [r11]
+        Mov(0x49, 0xBB, slotRip);
+        code.AddRange(new byte[] { 0x41, 0xFF, 0x27 });   // jmp [r11]
+        return code.ToArray();
+    }
 
     /// <summary>The parts of the PE format the mapper needs, and nothing else.</summary>
     private sealed class PeImage
@@ -493,6 +659,8 @@ public sealed class Injector
             }
             return true;
         }
+
+        internal static IntPtr RemoteModulePublic(IntPtr process, string name) => RemoteModule(process, name);
 
         /// <summary>Base of a module in the target, by name. Zero when it is not loaded there.</summary>
         private static IntPtr RemoteModule(IntPtr process, string name)

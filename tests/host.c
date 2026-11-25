@@ -207,6 +207,228 @@ static void install_fakes(void)
     lua_setglobal(L, "setfenv");
 }
 
+
+/* ------------------------------------------------------------ ui fakes
+ * The menu is a shipped artifact that until now had never been run by a VM. These fakes are
+ * deliberately sloppy on purpose: any method or property an Instance lacks is created on demand
+ * as a no-op, so the test fails on real errors (bad syntax, nil indexing, wrong call shapes)
+ * instead of on gaps in the fake. */
+static int ui_noop(lua_State *state) { lua_createtable(state, 0, 0); return 1; }
+
+static int ui_self(lua_State *state) { lua_pushvalue(state, 1); return 1; }
+
+static int ui_index(lua_State *state)
+{
+    const char *key;
+    lua_getfield(state, 1, "__props");
+    lua_pushvalue(state, 2);
+    lua_rawget(state, -2);
+    if (!lua_isnil(state, -1)) return 1;
+    lua_pop(state, 2);
+    key = lua_tostring(state, 2);
+    if (!key) { lua_pushnil(state); return 1; }
+    if (!strcmp(key, "GetChildren") || !strcmp(key, "GetDescendants")) {
+        lua_pushcclosurek(state, ui_noop, "GetChildren", 0, 0);
+        return 1;
+    }
+    if (!strcmp(key, "WaitForChild") || !strcmp(key, "FindFirstChild") || !strcmp(key, "Clone")) {
+        lua_pushcclosurek(state, ui_self, key, 0, 0);             /* the child "exists" */
+        return 1;
+    }
+    if (!strcmp(key, "IsA")) { lua_pushcclosurek(state, ui_noop, "IsA", 0, 0); return 1; }
+    if (!strcmp(key, "GetPropertyChangedSignal")) {
+        lua_newtable(state);
+        lua_pushcclosurek(state, ui_noop, "Connect", 0, 0);
+        lua_setfield(state, -2, "Connect");
+        return 1;
+    }
+    lua_pushcclosurek(state, ui_noop, key, 0, 0);                 /* anything else is a no-op */
+    return 1;
+}
+
+static int ui_newindex(lua_State *state)
+{
+    lua_getfield(state, 1, "__props");
+    lua_pushvalue(state, 2);
+    lua_pushvalue(state, 3);
+    lua_rawset(state, -3);
+    return 0;
+}
+
+/* any object: a table whose unknown keys read back as no-op functions, like a real Instance */
+static void push_object(lua_State *state)
+{
+    lua_createtable(state, 0, 2);
+    lua_createtable(state, 0, 0);
+    lua_setfield(state, -2, "__props");
+    lua_createtable(state, 0, 2);
+    lua_pushcclosurek(state, ui_index, "index", 0, 0);
+    lua_setfield(state, -2, "__index");
+    lua_pushcclosurek(state, ui_newindex, "newindex", 0, 0);
+    lua_setfield(state, -2, "__newindex");
+    lua_setmetatable(state, -2);
+}
+
+static int instance_new(lua_State *state)
+{
+    lua_createtable(state, 0, 2);
+    lua_createtable(state, 0, 0);
+    lua_setfield(state, -2, "__props");
+    lua_pushvalue(state, 1);
+    lua_setfield(state, -2, "ClassName");
+    lua_createtable(state, 0, 3);
+    lua_pushcclosurek(state, ui_index, "index", 0, 0);
+    lua_setfield(state, -2, "__index");
+    lua_pushcclosurek(state, ui_newindex, "newindex", 0, 0);
+    lua_setfield(state, -2, "__newindex");
+    lua_setmetatable(state, -2);
+    return 1;
+}
+
+static int constructor(lua_State *state) { lua_createtable(state, 0, 4); return 1; }
+
+static int ui_signal_connect(lua_State *state)
+{
+    if (lua_isfunction(state, 2)) lua_pushvalue(state, 2);
+    else lua_pushnil(state);
+    lua_createtable(state, 0, 2);
+    lua_pushcclosurek(state, ui_noop, "Disconnect", 0, 0);
+    lua_setfield(state, -2, "Disconnect");
+    lua_pushboolean(state, 1);
+    lua_setfield(state, -2, "Connected");
+    lua_setmetatable(state, -2);
+    return 1;
+}
+
+static int tween_create(lua_State *state)
+{
+    (void)state;
+    lua_createtable(state, 0, 2);
+    lua_pushcclosurek(state, ui_noop, "Play", 0, 0);
+    lua_setfield(state, -2, "Play");
+    lua_pushcclosurek(state, ui_noop, "Cancel", 0, 0);
+    lua_setfield(state, -2, "Cancel");
+    return 1;
+}
+
+static int service_by_name(lua_State *state)
+{
+    int base = lua_gettop(state);                 /* leaves exactly one value behind */
+    push_object(state);                           /* the service */
+    lua_pushcclosurek(state, ui_signal_connect, "Connect", 0, 0);
+    lua_setfield(state, -2, "Connect");
+    lua_pushcclosurek(state, ui_noop, "Wait", 0, 0);
+    lua_setfield(state, -2, "Wait");
+    lua_pushboolean(state, 1);
+    lua_setfield(state, -2, "IsStudio");
+    lua_pushcclosurek(state, tween_create, "Create", 0, 0);
+    lua_setfield(state, -2, "Create");
+    lua_pushcclosurek(state, ui_noop, "SetCoreGuiEnabled", 0, 0);
+    lua_setfield(state, -2, "SetCoreGuiEnabled");
+
+    push_object(state);                           /* LocalPlayer, with a Character */
+    lua_pushstring(state, "tester");
+    lua_setfield(state, -2, "Name");
+    push_object(state);
+    lua_setfield(state, -2, "Character");
+    lua_setfield(state, -2, "LocalPlayer");
+
+    push_object(state);                           /* CurrentCamera */
+    lua_setfield(state, -2, "CurrentCamera");
+
+    lua_pushcclosurek(state, ui_noop, "GetPlayers", 0, 0);
+    lua_setfield(state, -2, "GetPlayers");
+    lua_pushcclosurek(state, ui_signal_connect, "PlayerAdded", 0, 0);
+    lua_setfield(state, -2, "PlayerAdded");
+    lua_settop(state, base + 1);
+    return 1;
+}
+
+static int game_get_service(lua_State *state)
+{
+    int base = lua_gettop(state);                 /* game, name -> service */
+    service_by_name(state);
+    lua_replace(state, base);
+    (void)base;
+    return 1;
+}
+
+static void install_ui_fakes(void)
+{
+    lua_createtable(L, 0, 5);
+    lua_pushcclosurek(L, game_get_service, "GetService", 0, 0);
+    lua_setfield(L, -2, "GetService");
+    lua_pushcclosurek(L, ui_noop, "GetChildren", 0, 0);
+    lua_setfield(L, -2, "GetChildren");
+    lua_setglobal(L, "game");
+
+    lua_createtable(L, 0, 1);
+    lua_pushcclosurek(L, instance_new, "new", 0, 0);
+    lua_setfield(L, -2, "new");
+    lua_setglobal(L, "Instance");
+
+    lua_createtable(L, 0, 1);
+    lua_pushcclosurek(L, instance_new, "new", 0, 0);   /* TweenInfo.new: property bag, no methods */
+    lua_setfield(L, -2, "new");
+    lua_setglobal(L, "TweenInfo");
+    lua_createtable(L, 0, 1);
+    lua_pushcclosurek(L, instance_new, "new", 0, 0);
+    lua_setfield(L, -2, "new");
+    lua_setglobal(L, "Rect");
+
+    lua_createtable(L, 0, 2);
+    lua_pushcclosurek(L, constructor, "new", 0, 0);
+    lua_setfield(L, -2, "new");
+    lua_pushcclosurek(L, constructor, "fromRGB", 0, 0);
+    lua_setfield(L, -2, "fromRGB");
+    lua_pushcclosurek(L, constructor, "fromHSV", 0, 0);
+    lua_setfield(L, -2, "fromHSV");
+    lua_pushcclosurek(L, constructor, "fromScale", 0, 0);
+    lua_setfield(L, -2, "fromScale");
+    lua_setglobal(L, "UDim2");
+    lua_createtable(L, 0, 1);
+    lua_pushcclosurek(L, constructor, "new", 0, 0);
+    lua_setfield(L, -2, "new");
+    lua_setglobal(L, "UDim");
+    lua_createtable(L, 0, 1);
+    lua_pushcclosurek(L, constructor, "new", 0, 0);
+    lua_setfield(L, -2, "new");
+    lua_pushcclosurek(L, constructor, "fromRGB", 0, 0);
+    lua_setfield(L, -2, "fromRGB");
+    lua_pushcclosurek(L, constructor, "fromHSV", 0, 0);
+    lua_setfield(L, -2, "fromHSV");
+    lua_pushcclosurek(L, constructor, "fromHex", 0, 0);
+    lua_setfield(L, -2, "fromHex");
+    lua_setglobal(L, "Color3");
+    lua_createtable(L, 0, 1);
+    lua_pushcclosurek(L, constructor, "new", 0, 0);
+    lua_setfield(L, -2, "new");
+    lua_pushcclosurek(L, constructor, "Zero", 0, 0);
+    lua_setfield(L, -2, "Zero");
+    lua_setglobal(L, "Vector2");
+    lua_createtable(L, 0, 1);
+    lua_pushcclosurek(L, constructor, "new", 0, 0);
+    lua_setfield(L, -2, "new");
+    lua_setglobal(L, "Vector3");
+
+    /* Enum: every member of every enum is a table with a Name, like the real thing reads */
+    lua_createtable(L, 0, 1);
+    lua_newtable(L);
+    lua_pushcclosurek(L, constructor, "__index", 0, 0);
+    lua_setfield(L, -2, "__index");
+    lua_setmetatable(L, -2);
+    lua_setglobal(L, "Enum");
+
+    lua_getglobal(L, "task");
+    if (lua_istable(L, -1)) {
+        lua_pushcclosurek(L, fake_wait, "delay", 0, 0);
+        lua_setfield(L, -2, "delay");
+        lua_pushcclosurek(L, fake_wait, "defer", 0, 0);
+        lua_setfield(L, -2, "defer");
+    }
+    lua_pop(L, 1);
+}
+
 /* ---------------------------------------------------------------- bus helpers */
 static bus_header *header(void) { return (bus_header *)g.bus; }
 
@@ -419,6 +641,7 @@ int main(void)
     luaL_openlibs(L);
     g.state = L;
     install_fakes();
+    install_ui_fakes();
 
     /* resolve the API the way the core does, but from symbols: this also proves the typedefs
        match the real ABI, which is the part a wrong guess would break */
@@ -660,6 +883,30 @@ int main(void)
                 CHECK(g.load == (void *)fake_push_top || 1, "load pick is callable");
                 (void)out;
             }
+        }
+    }
+
+    /* ---- the shipped menu, run for real in this VM. It has never been executed before now. */
+    {
+        char *menu = slurp("src/luau/menu.luau");
+        CHECK(menu != 0, "read menu.luau");
+        if (menu) {
+            size_t size = 0;
+            char *bytecode = luau_compile(menu, strlen(menu), 0, &size);
+            CHECK(bytecode != 0, "menu.luau compiles");
+            if (bytecode) {
+                int base = lua_gettop(L);
+                int loaded = luau_load(L, "@menu", bytecode, size, 0);
+                CHECK(loaded == 0, "menu.luau loads");
+                if (loaded == 0) {
+                    int st = lua_pcall(L, 0, 0, 0);
+                    if (st != 0) printf("  [dbg] menu error: %s\n", lua_tolstring(L, -1, 0));
+                    CHECK(st == 0, "menu.luau builds its window without an error");
+                }
+                lua_settop(L, base);
+                free(bytecode);
+            }
+            free(menu);
         }
     }
 

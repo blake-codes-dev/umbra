@@ -991,15 +991,22 @@ static void push_bridge(lua_State *state, const char *apiSource)
  * measured RVAs against that base, sanity-checked to be executable and inside the recorded
  * code section, so a client update fails at the scan stage instead of calling into the void.
  */
+/* LDR_DATA_TABLE_ENTRY, walked through InMemoryOrderModuleList (offset 0x10), so the three
+   list links come first and the name is the second UNICODE_STRING at 0x58. */
 typedef struct {
     LIST_ENTRY order;
-    LIST_ENTRY links;
-    unsigned long long base;
-    unsigned long long entry;
-    unsigned long size;
-    unsigned short nameLength;
+    LIST_ENTRY memory;
+    LIST_ENTRY init;
+    unsigned long long base;          /* 0x30 */
+    unsigned long long entry;         /* 0x38 */
+    unsigned long size;               /* 0x40 */
+    unsigned long reserved;
+    unsigned short fullLength;        /* 0x48 */
+    unsigned short fullMax;
+    wchar_t *full;
+    unsigned short nameLength;        /* 0x58 */
     unsigned short nameMax;
-    wchar_t *name;
+    wchar_t *name;                    /* 0x60 */
 } module_entry;
 
 static int same_name(const wchar_t *a, const wchar_t *b)
@@ -1018,6 +1025,8 @@ static int same_name(const wchar_t *a, const wchar_t *b)
 static unsigned char *module_base(const wchar_t *wanted)
 {
     unsigned char *peb;
+    HMODULE direct = GetModuleHandleW(wanted);
+    if (direct) return (unsigned char *)direct;
     LIST_ENTRY *head, *cursor;
     UMBRA_TRY {
         peb = (unsigned char *)__readgsqword(0x60);
@@ -1091,6 +1100,105 @@ static void *at(unsigned char *base, unsigned int rva, const unsigned char *sig,
                       UMBRA_SIGLEN_##suffix ? UMBRA_SIG_##suffix : 0, \
                       UMBRA_SIGLEN_##suffix, label)
 
+/* Runs the caller's block inside SEH so a bad guess fails closed instead of killing the client.
+   Dead weight without a registered unwind table, which is why the entry registers one first. */
+#ifdef _MSC_VER
+#define GUARD(block) __try { block } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+#else
+#define GUARD(block) block           /* mingw has no SEH keyword; reads are validated instead */
+#endif
+
+/* an address we may safely deref for a read: committed, readable, executable, and inside the
+   module with headroom for a prologue */
+static int readable_code(unsigned char *base, void *address, size_t need)
+{
+    MEMORY_BASIC_INFORMATION region;
+    unsigned char *at_ = (unsigned char *)address;
+    if (at_ < base) return 0;
+    if (!VirtualQuery(address, &region, sizeof(region))) return 0;
+    if (region.State != MEM_COMMIT || (region.Protect & PAGE_NOACCESS)) return 0;
+    if (!(region.Protect & (PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY |
+                            PAGE_EXECUTE))) return 0;
+    return (size_t)((unsigned char *)region.BaseAddress + region.RegionSize - at_) >= need;
+}
+
+/* ---- pinned anchors ---------------------------------------------------------------------------
+   patterns.h is full of zeros because the shipped text is packed and no rva could be read from
+   the file. A measured set therefore comes from outside: the app drops the running client's
+   FileVersion in build.txt and <LOCALAPPDATA>\Umbra\anchors.txt carries per-version blocks.
+   Complete match wins outright; anything less falls through to the in-memory calibration. */
+typedef struct { const char *name; void **slot; } anchor_slot;
+
+static char *read_chunk(const char *name);
+
+static int pinned(unsigned char *base)
+{
+    static const anchor_slot slots[] = {
+        { "load", (void **)&g.load }, { "call", (void **)&g.pcall },
+        { "pushcclosure", (void **)&g.pushcclosure }, { "createtable", (void **)&g.createtable },
+        { "setfield", (void **)&g.setfield }, { "rawseti", (void **)&g.rawseti },
+        { "pushlstring", (void **)&g.pushls }, { "pushnumber", (void **)&g.pushnumber },
+        { "pushboolean", (void **)&g.pushboolean }, { "tolstring", (void **)&g.tolstring },
+        { "tonumber", (void **)&g.tonumber }, { "gettop", (void **)&g.gettop },
+    };
+    char *version, *text, *line;
+    int have = 0, in_block = 0;
+    size_t i;
+
+    version = read_chunk("build.txt");
+    if (!version) return 0;
+    for (char *c = version; *c; c++) if (*c == '\r' || *c == '\n' || *c == ' ') { *c = 0; break; }
+    if (!*version) return 0;
+
+    text = read_chunk("anchors.txt");
+    if (!text) return 0;
+
+    line = text;
+    while (*line) {
+        char *end = line;
+        while (*end && *end != '\n') end++;
+        if (*end == '\n') *end++ = 0;
+
+        if (line[0] == '[') {
+            char *close = line + 1;
+            while (*close && *close != ']') close++;
+            *close = 0;
+            in_block = !lstrcmpA(line + 1, version);
+            line = end;
+            continue;
+        }
+        if (in_block) {
+            char *equals = line;
+            while (*equals && *equals != '=') equals++;
+            if (*equals == '=') {
+                unsigned long long rva = 0;
+                char *hex = equals + 1;
+                while (*hex == ' ' || *hex == '\t') hex++;
+                if (hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) hex += 2;
+                for (; *hex; hex++) {
+                    int digit = -1;
+                    if (*hex >= '0' && *hex <= '9') digit = *hex - '0';
+                    else if (*hex >= 'a' && *hex <= 'f') digit = *hex - 'a' + 10;
+                    else if (*hex >= 'A' && *hex <= 'F') digit = *hex - 'A' + 10;
+                    if (digit < 0) break;
+                    rva = (rva << 4) | (unsigned)digit;
+                }
+                *equals = 0;
+                for (i = 0; i < sizeof(slots) / sizeof(slots[0]); i++) {
+                    if (lstrcmpA(line, slots[i].name)) continue;
+                    if (!readable_code(base, base + rva, 16)) break;
+                    *slots[i].slot = base + rva;
+                    have++;
+                    break;
+                }
+            }
+        }
+        line = end;
+    }
+    put(have >= 12 ? "pinned set" : "pinned set incomplete");
+    return have >= 12;
+}
+
 static int resolve(void)
 {
     unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
@@ -1099,6 +1207,7 @@ static int resolve(void)
         fail("scan", "RobloxPlayerBeta.exe is not loaded");
         return 0;
     }
+    GUARD(if (pinned(base)) { g.compile = 0; return 1; })
     put("r0 base ok");
     RESOLVE(load, luau_load_t, LUAU_LOAD, "luau_load");
     put("r1 load");
@@ -1513,33 +1622,40 @@ static int calibrate(unsigned char *base)
         return 0;
     }
     g.load = (luau_load_t)anchor_calls(base, "loadstring", 10, 1);
+    put("c1 load calls");
     g.pcall = (lua_pcall_t)anchor_calls(base, "pcall", 5, 0);
+    put("c2 pcall calls");
     if (g.load) report_pick("load", (void *)g.load);
     else fail("scan", "no load anchor found");
     if (!g.compile) {
         /* the compile call sits immediately before the load call in luaB_loadstring */
         unsigned char *loadAt = (unsigned char *)g.load;
         g.compile = (luau_compile_t)previous_call(loadAt, 0x400);
+    put("c3 prev call");
     }
 
     if (!g.pcall) {
         /* the pcall entry often references it indirectly; fall back to the other top-writing
            callee in loadstring, which is the compile/push side */
         g.pcall = (lua_pcall_t)anchor_calls(base, "loadstring", 10, 0);
+    put("c4 alt");
         if ((void *)g.pcall == (void *)g.load) g.pcall = 0;
     }
     if (g.pcall) report_pick("call", (void *)g.pcall);
     else fail("scan", "no call anchor found");
     if (!g.gettop && (g.gettop = (lua_gettop_t)find_gettop(base)) != 0)
+    put("c5 gettop");
         report_pick("gettop", (void *)g.gettop);
     if (g.compile) report_pick("compile", (void *)g.compile);
     if (!g.pushboolean && (g.pushboolean = (lua_pushboolean_t)find_push(1)) != 0)
+    put("c6 push");
         report_pick("pushbool", (void *)g.pushboolean);
     if (!g.pushnumber && (g.pushnumber = (lua_pushnumber_t)find_push(2)) != 0)
         report_pick("pushnum", (void *)g.pushnumber);
     if (!g.pushls && (g.pushls = (lua_pushlstring_t)find_push(3)) != 0)
         report_pick("pushstr", (void *)g.pushls);
     if (!g.setfield && (g.setfield = (lua_setfield_t)find_pop(pop_one)) != 0)
+    put("c7 pop");
         report_pick("setfield", (void *)g.setfield);
     if (!g.rawseti && (g.rawseti = (lua_rawseti_t)find_pop(pop_two)) != 0)
         report_pick("rawseti", (void *)g.rawseti);
@@ -2061,18 +2177,63 @@ static void install_now(void)
 
 /* ------------------------------------------------------------------ entry */
 static int g_guardReady;
+static DWORD run_entry(void);
+
+/* A manual map is not a module, so the loader never sees our .pdata and every __try in the payload
+   would be dead weight: an access violation anywhere would kill the client instead of landing in
+   the handler. Registering our own unwind table is what makes the SEH real. */
+extern IMAGE_DOS_HEADER __ImageBase;
+typedef BOOLEAN (WINAPI *rtl_add_table_t)(PRUNTIME_FUNCTION, DWORD, DWORD64);
+
+static int register_unwind(void)
+{
+    unsigned char *base = (unsigned char *)&__ImageBase;
+    IMAGE_NT_HEADERS *nt;
+    rtl_add_table_t add;
+    DWORD rva, size;
+    put("u1 base");
+    if (__ImageBase.e_magic != IMAGE_DOS_SIGNATURE) return 0;
+    nt = (IMAGE_NT_HEADERS *)(base + __ImageBase.e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) return 0;
+    rva = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].VirtualAddress;
+    size = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].Size;
+
+    put("u2 dir");
+    if (!rva || size < sizeof(RUNTIME_FUNCTION)) return 0;
+    add = (rtl_add_table_t)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlAddFunctionTable");
+    if (!add) return 0;
+    put("u3 add");
+    return add((PRUNTIME_FUNCTION)(base + rva), size / sizeof(RUNTIME_FUNCTION),
+               (DWORD64)(ULONG_PTR)base) ? 1 : 0;
+}
+
 __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
+{
+    DWORD code = 0;
+    (void)parameter;
+    UMBRA_TRY {
+        code = run_entry();
+    }
+    UMBRA_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+        char line[64];
+        wsprintfA(line, "fail entry code %lx", GetExceptionCode());
+        put(line);
+        emit("e", 0, line);
+    }
+    return code;
+}
+
+static DWORD run_entry(void)
 {
     char path[MAX_PATH];
     char name[64];
     HANDLE file;
     bus_header *header;
 
-    (void)parameter;
-
-    /* several threads may pick up the apc (and the fallback may run too): only the first installs */
+    put("m1 enter");
     if (g_started) return 0;
     g_started = 1;
+    put(register_unwind() ? "m2 unwind ok" : "m2 no unwind");
 #ifndef UMBRA_HOST
     /* a manual map never runs DllMain, so the CFG thunks have to come up here */
     if (!g_guardReady) { g_guardReady = 1; init_guard_thunks(); }

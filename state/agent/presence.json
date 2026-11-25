@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795626292.6253362,
-  "iso": "2026-11-25T17:04:52Z",
-  "note": "0.1.12-dev shipped with the rax fix",
+  "at": 1795626976.2636292,
+  "iso": "2026-11-25T17:16:16Z",
+  "note": "27 ok, regression test for the rax bug, calibration ok",
   "state": "working",
   "alerted": false,
-  "beats": 22
+  "beats": 23
  },
  "windows": {
   "at": 1795614841.399289,

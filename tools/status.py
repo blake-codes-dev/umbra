@@ -127,7 +127,37 @@ def update(_args):
                 created = call("/channels/%s/messages" % channel(), {"content": body})
                 state["messages"][side] = created["id"]
                 state["born"][side] = time.time()
+    nudge(state, here)
     json.dump(state, open(STATE, "w"), indent=1)
+
+
+NUDGE_AFTER = 3600          # a peer red this long gets called out once an hour
+NUDGE_REPEAT = 3600
+
+
+def nudge(state, here):
+    """A silent agent must be audible, not just painted red. One line in the relay per hour per
+       dead side, so the survivor and the owner both see it without watching a board."""
+    sent = state.setdefault("nudged", {})
+    relay = None
+    for side in SIDES:
+        entry = here.get(side) or {}
+        age = time.time() - entry.get("at", 0)
+        if age < NUDGE_AFTER and entry.get("state") != "stuck":
+            sent.pop(side, None)
+            continue
+        if time.time() - sent.get(side, 0) < NUDGE_REPEAT:
+            continue
+        if relay is None:
+            try:
+                relay = json.load(open(os.path.join(ROOT, "state", "discord.json")))["channels"]["relay"]
+            except (OSError, ValueError, KeyError):
+                return
+        note = (entry.get("note") or "no note")[:120]
+        call("/channels/%s/messages" % relay, {
+            "content": "@agents **%s** has been quiet %d min - last note: %s"
+                       % (side, age // 60, note)})
+        sent[side] = time.time()
 
 
 def main():

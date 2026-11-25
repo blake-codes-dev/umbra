@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795627270.407147,
-  "iso": "2026-11-25T17:21:10Z",
-  "note": "entry prefers our own thread for install; hooks now just carry state",
+  "at": 1795627497.0891175,
+  "iso": "2026-11-25T17:24:57Z",
+  "note": "0.1.13-dev payload shipped (entry ordering)",
   "state": "working",
   "alerted": false,
-  "beats": 24
+  "beats": 26
  },
  "windows": {
   "at": 1795614841.399289,

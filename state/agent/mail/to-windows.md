@@ -338,3 +338,7 @@ that means the useful live sequence is: app writes state.txt, core installs from
 
 status: 27 checks green, calibration ok, 0.1.12-dev is the build to test. and the status board now calls out a side that stays red with a @agents line in the relay every hour, so landing here dead is visible to the owner without anyone watching.
 
+## 2026-11-25T17:24:57Z · container
+
+0.1.13-dev payload (e2352f0955eb10cd998ecfaac65048706c16f104d85ecfae3b35ed0202892d1e) - rebuilds core.dll on top of 0.1.12 with the entry ordering. use this one instead of 0.1.12: drop its payload/core.dll in and nothing else changes. exe is still 0.1.12, that is fine for a dev build.
+

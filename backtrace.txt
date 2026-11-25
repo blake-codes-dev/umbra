@@ -1,0 +1,167 @@
+Unhandled exception: illegal instruction in 64-bit code (0x0000014005ace4).
+Register dump:
+ rip:000000014005ace4 rsp:00007ffffe2fbc60 rbp:00007ffffe2fbca0 eflags:00010202 (  R- --  I   - - - )
+ rax:0000000000000001 rbx:0000000000000005 rcx:00000001401f5608 rdx:00000001401f55e9
+ rsi:0000000000000001 rdi:0000000140001917  r8:000000000000006c  r9:00000001401f562f r10:0000000000000000
+ r11:0000000000000202 r12:00007ffffe8e0040 r13:0000000000000000 r14:0000000000000000 r15:0000000000000000
+Stack dump:
+0x007ffffe2fbc60:  00000001401f5608 00000001401f55e9
+0x007ffffe2fbc70:  00007fff0000006c 00000001401f562f
+0x007ffffe2fbc80:  00007ffffe8a4eb0 0000000000000030
+0x007ffffe2fbc90:  fffffffffff9e300 0000000100000007
+0x007ffffe2fbca0:  00007ffffe2fbd20 00000001400674ed
+0x007ffffe2fbcb0:  00007ffffe8a4eb0 00007ffffe8a4eb0
+0x007ffffe2fbcc0:  00007ffffe2fbd10 00000001400617d0
+0x007ffffe2fbcd0:  00007ffffe8a4eb0 0000000100000000
+0x007ffffe2fbce0:  00007ffffebb1fe0 00007ffffe2fbdb0
+0x007ffffe2fbcf0:  000000000000006e fe8a4eb0fe8a3168
+0x007ffffe2fbd00:  00007ffffe8a4eb0 00007ffffebaf8e0
+0x007ffffe2fbd10:  0000000000000000 0000000000000000
+Backtrace:
+=>0 0x0000014005ace4 in robloxplayerbeta (+0x5ace4) (0x007ffffe2fbca0)
+  1 0x000001400674ed in robloxplayerbeta (+0x674ed) (0x007ffffe2fbd20)
+  2 0x00000140007278 in robloxplayerbeta (+0x7278) (0000000000000000)
+  3 0x000001400012ee in robloxplayerbeta (+0x12ee) (0x007ffffe8a3160)
+  4 0x00000140001406 in robloxplayerbeta (+0x1406) (0000000000000000)
+  5 0x006fffffa54819 BaseThreadInitThunk+0x9(unknown=<internal error>, entry=<internal error>, arg=<internal error>) [/build/reproducible-path/wine-10.0~repack/dlls/kernel32/thread.c:61] in kernel32 (0000000000000000)
+  6 0x006fffffc2fa1b in ntdll (+0xfa1b) (0000000000000000)
+0x0000014005ace4 robloxplayerbeta+0x5ace4: ud2 
+Modules:
+Module  Address                                 Debug info      Name (41 modules)
+PE             140000000-       1402c8000       Dwarf-5         robloxplayerbeta
+ELF         5ece2238d000-    5ece22392000       Deferred        <wine-loader>
+PE-Wine     6ffff8710000-    6ffff8769000       Deferred        jsproxy
+PE-Wine     6ffff8780000-    6ffff88cc000       Deferred        winhttp
+PE-Wine     6ffffb6e0000-    6ffffb761000       Deferred        imm32
+PE-Wine     6ffffb9e0000-    6ffffbd51000       Deferred        oleaut32
+PE-Wine     6ffffd6f0000-    6ffffd74b000       Deferred        coml2
+PE-Wine     6ffffd760000-    6ffffda06000       Deferred        rpcrt4
+PE-Wine     6ffffda20000-    6ffffda67000       Deferred        win32u
+PE-Wine     6ffffda80000-    6ffffdaaa000       Deferred        zlib1
+PE-Wine     6ffffdac0000-    6ffffe085000       Deferred        user32
+PE-Wine     6ffffe0a0000-    6ffffe379000       Deferred        gdi32
+PE-Wine     6ffffe390000-    6ffffe534000       Deferred        combase
+PE-Wine     6ffffe550000-    6ffffe934000       Deferred        ole32
+PE-Wine     6ffffe950000-    6ffffea02000       Deferred        ws2_32
+PE-Wine     6ffffea20000-    6ffffee50000       Deferred        ucrtbase
+PE-Wine     6ffffee60000-    6ffffeeee000       Deferred        sechost
+PE-Wine     6ffffef00000-    6fffff297000       Deferred        msvcrt
+PE-Wine     6fffff2b0000-    6fffff3e0000       Deferred        advapi32
+PE-Wine     6fffff3f0000-    6fffffa25000       Deferred        kernelbase
+PE-Wine     6fffffa40000-    6fffffc04000       Dwarf-4         kernel32
+PE-Wine     6fffffc20000-    6ffffffec000       Dwarf-4         ntdll
+ELF         7eda55a87000-    7eda55a8e000       Deferred        ws2_32.so
+ELF         7eda55b4d000-    7eda55b7b000       Deferred        libexpat.so.1
+ELF         7eda55b7b000-    7eda55bc9000       Deferred        libfontconfig.so.1
+ELF         7eda55bc9000-    7eda55bec000       Deferred        libbrotlicommon.so.1
+ELF         7eda55bec000-    7eda55bfa000       Deferred        libbrotlidec.so.1
+ELF         7eda55bfa000-    7eda55c33000       Deferred        libpng16.so.16
+ELF         7eda55c33000-    7eda55c46000       Deferred        libbz2.so.1.0
+ELF         7eda55c46000-    7eda55c66000       Deferred        libz.so.1
+ELF         7eda55c66000-    7eda55d36000       Deferred        libfreetype.so.6
+ELF         7eda55d36000-    7eda55e26000       Deferred        libm.so.6
+ELF         7eda55e34000-    7eda55fec000       Deferred        win32u.so
+ELF         7eda566c1000-    7eda566f2000       Deferred        liblzma.so.5
+ELF         7eda566f2000-    7eda5670f000       Deferred        libunwind.so.8
+ELF         7eda5670f000-    7eda567d2000       Export          ntdll.so
+ELF         7eda567d4000-    7eda569c8000       Deferred        libc.so.6
+ELF         7eda569d6000-    7eda569e9000       Deferred        selkies_v4l2_interposer.so
+ELF         7eda569e9000-    7eda56a02000       Deferred        libudev.so.1.0.0-fake
+ELF         7eda56a02000-    7eda56a5c000       Deferred        selkies_input_interposer.so
+ELF         7eda56a66000-    7eda56a9e000       Deferred        ld-linux-x86-64.so.2
+Threads:
+process  tid      prio    name (all IDs are in hex)
+00000020 ft.exe
+	00000024    0     
+	00000144    0     .NET EventPipe
+	00000148    0     .NET Debugger
+	0000014c    0     .NET Finalizer
+	00000158    0     
+	0000015c    0     wine_rpcrt4_server
+	00000160    0     wined3d_cs
+00000038 services.exe
+	0000003c    0     
+	00000040    0     wine_rpcrt4_server
+	0000004c    0     wine_rpcrt4_io
+	00000078    0     wine_rpcrt4_io
+	00000090    0     wine_rpcrt4_io
+	000000b0    0     wine_rpcrt4_io
+	000000c0    0     wine_rpcrt4_io
+	000000dc    0     wine_rpcrt4_io
+	000000fc    0     
+	00000118    0     wine_rpcrt4_io
+00000044 winedevice.exe
+	00000048    0     
+	00000054    0     
+	00000058    0     wine_sechost_service
+	0000005c    0     
+	00000060    0     
+	00000064    0     
+	0000009c    0     
+	000000a0    0     
+00000068 explorer.exe
+	0000006c    0     
+	000000a4    0     
+	000000a8    0     wine_explorer_display_settings_restorer
+	000000ac    0     wine_rpcrt4_server
+00000070 plugplay.exe
+	00000074    0     
+	0000007c    0     
+	00000080    0     wine_sechost_service
+	00000084    0     wine_rpcrt4_server
+	000000f0    0     wine_rpcrt4_io
+00000088 svchost.exe
+	0000008c    0     
+	00000094    0     
+	00000098    0     wine_sechost_service
+000000b8 winedevice.exe
+	000000bc    0     
+	000000c4    0     
+	000000c8    0     wine_sechost_service
+	000000cc    0     
+	000000d0    0     
+	000000d4    0     
+	000000e0    0     
+	000000e8    0     
+	000000ec    0     
+	00000108    0     
+	0000010c    0     
+	00000110    0     
+	00000114    0     
+	0000012c    0     
+	00000138    0     
+	0000013c    0     
+	00000140    0     
+00000100 rpcss.exe
+	00000104    0     
+	0000011c    0     
+	00000120    0     wine_sechost_service
+	00000124    0     wine_rpcrt4_server
+	00000128    0     wine_rpcrt4_server
+	00000130    0     wine_rpcrt4_io
+00000284 ft.exe
+	00000288    0     
+	0000028c    0     .NET EventPipe
+	00000290    0     .NET Debugger
+	00000294    0     .NET Finalizer
+	000002a0    0     
+	000002a4    0     wine_rpcrt4_server
+	000002a8    0     wined3d_cs
+000002d4 ft.exe
+	000002d8    0     
+	000002dc    0     .NET EventPipe
+	000002e0    0     .NET Debugger
+	000002e4    0     .NET Finalizer
+	000002f0    0     
+	000002f4    0     wine_rpcrt4_server
+	000002f8    0     wined3d_cs
+	000001a4    0     .NET Tiered Compilation Worker
+0000016c (D) Z:\config\.deepai-code\scratch\2026-11-24-try-to-go-into-github-5017c798\umbra\dist\test\RobloxPlayerBeta.exe
+	00000168    0 <== 
+	000001a0    0     
+System information:
+    Wine build: wine-10.0 (Debian 10.0~repack-6)
+    Platform: x86_64 (guest: i386)
+    Version: Windows 10
+    Host system: Linux
+    Host version: 6.18.58.1-microsoft-standard-WSL2

@@ -102,6 +102,7 @@ static core_state g;
 static const char *find_text(const char *haystack, const char *needle);
 static void push_bus(lua_State *state);
 static void push_bridge(lua_State *state, const char *apiSource);
+static int cb_pump(lua_State *state);
 static int resolve(void);
 static int calibrate(unsigned char *base);
 static int open_pipe(void);
@@ -112,7 +113,25 @@ static char g_stage[32] = "start";
    Everything that can point at a wrong address goes through this. */
 static int safe_read(const void *at, void *out, size_t size)
 {
-#if defined(__MINGW32__)
+#if defined(UMBRA_HOST)
+    /* the harness owns its own memory, so reads can be direct - but the image has uncommitted
+       holes, so the region is checked first. The last region is cached because the scanners hit
+       the same page millions of times. */
+    {
+        static const unsigned char *cacheBase, *cacheEnd;
+        MEMORY_BASIC_INFORMATION region;
+        const unsigned char *p = (const unsigned char *)at;
+        if (!cacheBase || p < cacheBase || p + size > cacheEnd) {
+            if (!VirtualQuery(at, &region, sizeof(region))) return 0;
+            if (region.State != MEM_COMMIT) return 0;
+            cacheBase = (const unsigned char *)region.BaseAddress;
+            cacheEnd = cacheBase + region.RegionSize;
+        }
+        if (p + size > cacheEnd) return 0;
+        memcpy(out, at, size);
+        return 1;
+    }
+#elif defined(__MINGW32__)
     SIZE_T got = 0;
     return ReadProcessMemory(GetCurrentProcess(), at, out, size, &got) && got == size;
 #else
@@ -821,6 +840,7 @@ static void push_bridge(lua_State *state, const char *apiSource)
     field(state, "setclipboard", (void *)cb_setclipboard);
     field(state, "windowActive", (void *)cb_windowactive);
     field(state, "loadstring", (void *)cb_loadstring);
+    field(state, "pump", (void *)cb_pump);
     if (apiSource && g.pushls && g.setfield) {
         g.pushls(state, apiSource, lstrlenA(apiSource));
         g.setfield(state, -2, "apiSource");
@@ -1003,6 +1023,20 @@ static int in_range(void *at, unsigned char *lo, unsigned char *hi)
 }
 
 /* is the address inside any committed executable region? */
+/* how far a scan may walk inside this module: mapped size minus the header page */
+static size_t code_span(unsigned char *base)
+{
+    IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
+    IMAGE_NT_HEADERS *nt;
+    size_t span;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
+    nt = (IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) return 0;
+    span = nt->OptionalHeader.SizeOfImage;
+    if (span <= 0x10000) return 0;
+    return span - 0x10000;
+}
+
 static void *exec_target(unsigned long long address)
 {
     MEMORY_BASIC_INFORMATION region;
@@ -1186,8 +1220,9 @@ static void *previous_call(unsigned char *at, size_t window)
 static void *find_gettop(unsigned char *base)
 {
     unsigned char *start = base + 0x1000;
-    size_t span = UMBRA_TEXT_SIZE > (8u << 20) ? (8u << 20) : UMBRA_TEXT_SIZE;
+    size_t span = code_span(base);
     size_t i;
+    if (!span) return 0;
     for (i = 0; i + 32 < span; i++) {
         unsigned char code[32];
         if (!safe_read(start + i, code, sizeof(code))) return 0;
@@ -1209,9 +1244,9 @@ static void *find_gettop(unsigned char *base)
 static void *find_push(int kind)
 {
     unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
-    size_t i, span = 8u << 20;
+    size_t i, span = code_span(base);
     unsigned char *start;
-    if (!base) return 0;
+    if (!base || !span) return 0;
     start = base + 0x1000;
     for (i = 0; i + 40 < span; i++) {
         unsigned char code[40];
@@ -1244,9 +1279,9 @@ static const unsigned char pop_two[] = { 0x48, 0x83, 0x69, 0x80, 0x20 };
 static void *find_pop(const unsigned char *needle)
 {
     unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
-    size_t i, span = 8u << 20;
+    size_t i, span = code_span(base);
     unsigned char *start;
-    if (!base) return 0;
+    if (!base || !span) return 0;
     start = base + 0x1000;
     for (i = 0; i + 48 < span; i++) {
         unsigned char code[48];
@@ -1265,9 +1300,9 @@ static void *find_pop(const unsigned char *needle)
 static void *find_createtable(void)
 {
     unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
-    size_t i, span = 8u << 20;
+    size_t i, span = code_span(base);
     unsigned char *start;
-    if (!base) return 0;
+    if (!base || !span) return 0;
     start = base + 0x1000;
     for (i = 0; i + 56 < span; i++) {
         unsigned char code[56];
@@ -1291,7 +1326,7 @@ static void *find_createtable(void)
 static void *find_indexed(int wantNumber)
 {
     unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
-    size_t i, span = 8u << 20;
+    size_t i, span = 2u << 20;
     static const unsigned char pickLast[] = { 0x48, 0x8B, 0x41, 0x80, 0x48, 0x83, 0xE8, 0x10 };
     if (!base) return 0;
     for (i = 0x1000; i + 80 < span; i++) {
@@ -1545,14 +1580,16 @@ static void handle_line(const char *line)
     }
 }
 
-static void serve(void)
+/* One non-blocking pass: read what the gui sent, forward what the runner produced. Called from
+   the runner's Heartbeat through the bridge, which is why the core needs no thread of its own. */
+static void pump(void)
 {
     /* GUI <-> core: one JSON object per line. Never blocks the client: the pipe is NOWAIT and
        an idle pass only sleeps. */
     char chunk[4096];
     DWORD read = 0;
 
-    while (g.pipe != INVALID_HANDLE_VALUE) {
+    if (g.pipe != INVALID_HANDLE_VALUE) {
         if (ReadFile(g.pipe, chunk, sizeof(chunk) - 1, &read, 0) && read > 0) {
             chunk[read] = 0;
             for (DWORD i = 0; i < read; i++) {
@@ -1566,18 +1603,201 @@ static void serve(void)
                 }
             }
         } else if (GetLastError() == ERROR_BROKEN_PIPE) {
-            break;
-        } else {
-            /* idle: the runner fills the bus, we only forward it, so a short sleep costs
-               nothing on the client's frame budget */
-            Sleep(12);
+            DisconnectNamedPipe(g.pipe);
+            CloseHandle(g.pipe);
+            g.pipe = INVALID_HANDLE_VALUE;
         }
-        drain_output();
-        /* nothing else to do with the bus: the runner drains it and emits straight out */
     }
-    DisconnectNamedPipe(g.pipe);
-    CloseHandle(g.pipe);
-    g.pipe = INVALID_HANDLE_VALUE;
+    drain_output();
+}
+
+/* the bridge form: safe to call every frame, never blocks */
+static int cb_pump(lua_State *state)
+{
+    (void)state;
+    pump();
+    return 0;
+}
+
+
+/* ------------------------------------------------------------------ VM thread handoff
+ * Luau is not thread safe: touching a lua_State while the client's own thread is inside it
+ * corrupts its stack and the client dies a frame or two later. So nothing is called from the
+ * injected thread. A hook on lua_pcall (the client calls it constantly) gives us the VM thread,
+ * in a state where a call is expected, and the runner is installed from there exactly once.
+ */
+static unsigned char *g_trampoline;
+static unsigned char *g_replay;
+#ifdef UMBRA_HOST
+static int g_noThunk;
+static int g_quietThunk;
+#endif   /* executable page: a jump target cannot live in .data */
+static void *g_hookTarget;
+static int g_installed;
+static int g_hooked;
+static char *g_apiSource;
+static char *g_runnerSource;
+
+static void install_now(void);
+
+/* called instead of the hooked function; its return goes through the replay stub */
+static void hook_thunk(void)
+{
+#ifdef UMBRA_HOST
+    if (!g_quietThunk) { extern int printf(const char *, ...); printf("  [dbg] thunk\n"); }
+#endif
+    if (!g_installed) install_now();
+}
+
+/* Length of one instruction, enough for the prologues these wrappers start with. Returns 0 on
+   anything it does not understand, and the hook is then skipped rather than guessed at. */
+static int sub_insn_len(const unsigned char *code)
+{
+    int i = 0;
+    int rex = 0;
+    unsigned char op;
+    int modrm = 0, mod, rm, disp = 0, imm = 0;
+
+    while (i < 4 && (code[i] == 0x66 || code[i] == 0x67 || code[i] == 0xF2 || code[i] == 0xF3))
+        i++;
+    if (i < 4 && code[i] >= 0x40 && code[i] <= 0x4F) { rex = 1; i++; }
+    if (i >= 8) return 0;
+    op = code[i++];
+
+    if (op >= 0x50 && op <= 0x5F) return i;                 /* push/pop reg */
+    if (op == 0xC3 || op == 0xCC || op == 0x90 || op == 0xF8) return i;
+    if (op >= 0xB8 && op <= 0xBF) return i + (rex ? 8 : 4); /* mov reg, imm */
+    if (op == 0xE8 || op == 0xE9) return i + 4;
+    if (op == 0xEB) return i + 1;
+    if (op == 0x8D || op == 0x89 || op == 0x8B || op == 0x31 || op == 0x33 || op == 0x85 ||
+        op == 0x3B || op == 0x01 || op == 0x03 || op == 0x29 || op == 0x2B || op == 0x39 ||
+        op == 0x83 || op == 0x81 || op == 0xC7 || op == 0xFF || op == 0xF7 || op == 0x2D ||
+        op == 0x05) {
+        if (i >= 8) return 0;
+        modrm = code[i++];
+        mod = (modrm >> 6) & 3;
+        rm = modrm & 7;
+        if (mod != 3) {
+            if (rm == 4) { i++; }                            /* sib */
+            if (mod == 1) disp = 1;
+            else if (mod == 2) disp = 4;
+            else if (rm == 5) disp = 4;                      /* rip-relative */
+        }
+        i += disp;
+        if (op == 0x83) imm = 1;
+        else if (op == 0x81 || op == 0xC7 || op == 0xF7) imm = 4;
+        else if (op == 0x05) imm = 4;
+        return i + imm;
+    }
+    return 0;
+}
+
+/* A CALL, not a jump, is what makes this safe. `call target` pushes a return address, so the
+   callee sees the same stack shape as a real call (8 mod 16 at entry) and its own `ret` returns
+   to target+5 - which is why the first instruction has to be exactly 5 bytes long. If it is not,
+   the hook is skipped and the caller falls back to installing from the injected thread.
+     target : E8 rel32 -> stub, then NOP padding out to the instruction boundary
+     stub   : pop our own return address (it is not needed - the jmp back takes over), then
+              save rax/rcx/rdx/r8/r9, call hook_thunk, restore, jmp replay
+     replay : the displaced instructions, then E9 rel32 -> target+displaced
+   Popping the return address is what makes the frame identical to a normal entry: the callee
+   later returns straight to the caller instead of back into our patch. The NOP padding only
+   exists so the jump can always be five bytes. */
+static int install_hook(void *target)
+{
+    DWORD old;
+    unsigned char *at = (unsigned char *)target;
+    unsigned char *stub;
+    int i, n = 0, displaced = 0, guard = 0;
+    ptrdiff_t delta;
+
+    if (!target) return 0;
+
+    /* whole instructions, at least the five the jump needs */
+    while (displaced < 5) {
+        int length = sub_insn_len(at + displaced);
+        if (!length) return 0;
+        displaced += length;
+        if (++guard > 6) return 0;
+    }
+
+    if (!g_trampoline) {
+        ULONG_PTR hint = ((ULONG_PTR)at + 0x10000) & ~(ULONG_PTR)0xFFF;
+        for (i = 1; i < 64 && !g_trampoline; i++)
+            g_trampoline = (unsigned char *)VirtualAlloc((void *)(hint + (ULONG_PTR)i * 0x10000),
+                                                         4096, MEM_COMMIT | MEM_RESERVE,
+                                                         PAGE_EXECUTE_READWRITE);
+        if (!g_trampoline) return 0;
+    }
+    stub = g_trampoline;
+    g_replay = g_trampoline + 64;
+
+    for (i = 0; i < displaced; i++) g_replay[i] = at[i];
+    g_replay[displaced] = 0xE9;
+    {
+        long rel = (long)(at + displaced - (g_replay + displaced + 5));
+        memcpy(g_replay + displaced + 1, &rel, 4);
+    }
+
+    if (g_noThunk) {                                      /* bisect: replay only */
+        n = 0;
+        stub[n++] = 0xE9;
+        {
+            long rel = (long)(g_replay - (stub + n + 4));
+            memcpy(stub + n, &rel, 4);
+        }
+        n += 4;
+        goto patch_target;
+    }
+    stub[n++] = 0x50;                                     /* push rax */
+    stub[n++] = 0x51;                                     /* push rcx */
+    stub[n++] = 0x52;                                     /* push rdx */
+    stub[n++] = 0x41; stub[n++] = 0x50;                   /* push r8  */
+    stub[n++] = 0x41; stub[n++] = 0x51;                   /* push r9  */
+    /* five saves leave the call site 16-byte aligned, which is what __cdecl wants */
+    stub[n++] = 0x48; stub[n++] = 0xB8;                   /* mov rax, hook_thunk */
+    *(unsigned long long *)&stub[n] = (unsigned long long)hook_thunk;
+    n += 8;
+    stub[n++] = 0xFF; stub[n++] = 0xD0;                   /* call rax */
+    stub[n++] = 0x41; stub[n++] = 0x59;                   /* pop r9  */
+    stub[n++] = 0x41; stub[n++] = 0x58;                   /* pop r8  */
+    stub[n++] = 0x5A;                                     /* pop rdx */
+    stub[n++] = 0x59;                                     /* pop rcx */
+    stub[n++] = 0x58;                                     /* pop rax */
+    stub[n++] = 0xE9;
+    {
+        long rel = (long)(g_replay - (stub + n + 4));
+        memcpy(stub + n, &rel, 4);
+    }
+    n += 4;
+patch_target:
+    FlushInstructionCache(GetCurrentProcess(), g_trampoline, 128);
+
+    delta = (unsigned char *)stub - (at + 5);
+    if (delta > 0x7FFFFFFFLL || delta < -0x7FFFFFFFLL) return 0;
+    if (!VirtualProtect(at, displaced + 8, PAGE_EXECUTE_READWRITE, &old)) return 0;
+    at[0] = 0xE9;
+    { long rel = (long)((unsigned char *)stub - (at + 5)); memcpy(at + 1, &rel, 4); }
+    for (i = 5; i < displaced; i++) at[i] = 0x90;
+    VirtualProtect(at, displaced + 8, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), at, displaced + 8);
+    g_hooked = 1;
+    return 1;
+}
+
+/* installed on the VM thread: load the runner, then the hook is no longer needed */
+static void install_now(void)
+{
+    lua_State *state;
+    g_installed = 1;
+    state = g.state ? g.state : state_from_scriptcontext();
+    if (!state) {
+        g_installed = 0;
+        return;
+    }
+    g.state = state;
+    emit("i", 0, "on the vm thread, installing runner");
+    spawn_runner(state, g_apiSource, g_runnerSource);
 }
 
 /* ------------------------------------------------------------------ entry */
@@ -1632,17 +1852,21 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
     if (!g.state) {
         fail("state", "lua_State not found yet");
     } else {
-        char *apiChunk = read_chunk("api.luau");
-        char *chunk = read_chunk("runner.luau");
-        if (!chunk) fail("compile", "runner.luau missing from %LOCALAPPDATA%\\Umbra");
+        g_apiSource = read_chunk("api.luau");
+        g_runnerSource = read_chunk("runner.luau");
+        if (!g_runnerSource) fail("compile", "runner.luau missing from %LOCALAPPDATA%\\Umbra");
+        else if (g.pcall && install_hook((void *)g.pcall))
+            emit("i", 0, "waiting for the vm thread");
         else {
-            emit("i", 0, "state found, spawning runner");
-            spawn_runner(g.state, apiChunk, chunk);
+            /* no hook possible: fall back to installing from here, which is the racy path */
+            emit("w", 0, "no hook, installing from the injected thread");
+            install_now();
         }
     }
 
     emit("i", 0, "core up");
-    if (g.pipe != INVALID_HANDLE_VALUE) serve();
+    /* no loop here: the caller's thread is given straight back. Everything after this runs on
+       the runner's Heartbeat (bridge pump), so we add no thread to the client. */
     return 0;
 }
 

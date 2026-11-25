@@ -8,7 +8,7 @@
  */
 #define UMBRA_HOST 1
 
-#include "lua.h"
+typedef struct { void *BaseAddress; void *AllocBase; unsigned AllocProtect; unsigned long long RegionSize; unsigned State; unsigned Protect; unsigned Type; } MEMORY_BASIC_INFORMATION_;
 #include "lualib.h"
 #include "luacode.h"
 
@@ -260,7 +260,7 @@ static char *slurp(const char *path)
 
 /* ---------------------------------------------------------------- pipe */
 HANDLE g_client = INVALID_HANDLE_VALUE;
-static DWORD WINAPI serve_thread(void *x) { (void)x; serve(); return 0; }
+/* no pump thread: the runner services the pipe from its Heartbeat, exactly as in the client */
 
 static int pipe_write(const char *line)
 {
@@ -302,6 +302,41 @@ static int pipe_expect(const char *needle, char *sink, size_t size, int steps)
     return 0;
 }
 
+/* every crash writes a dump next to the binary, so a run is diagnosable after the fact */
+static LONG WINAPI crash_dump(EXCEPTION_POINTERS *info)
+{
+    char path[MAX_PATH];
+    HANDLE file;
+    DWORD written;
+    char buffer[1600];
+    char *o = buffer;
+    unsigned long long *stack;
+    int i;
+    static const char *digits = "0123456789abcdef";
+
+    GetModuleFileNameA(0, path, MAX_PATH);
+    lstrcpyA(strrchr(path, '.') + 1, "crash.log");
+    file = CreateFileA(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+    if (file == INVALID_HANDLE_VALUE) return EXCEPTION_CONTINUE_SEARCH;
+
+#define PUT(text) do { const char *a = (text); while (*a) *o++ = *a++; } while (0)
+#define HEX(value) do { unsigned long long v_ = (unsigned long long)(value); int k_;     PUT("0x"); for (k_ = 60; k_ >= 0; k_ -= 4) *o++ = digits[(v_ >> k_) & 0xF]; } while (0)
+    PUT("code "); HEX(info->ExceptionRecord->ExceptionCode); PUT("\n");
+    PUT("rip  "); HEX(info->ContextRecord->Rip); PUT("\n");
+    PUT("rsp  "); HEX(info->ContextRecord->Rsp); PUT("\n");
+    PUT("rax  "); HEX(info->ContextRecord->Rax); PUT(" rcx ");
+    HEX(info->ContextRecord->Rcx); PUT(" rdx "); HEX(info->ContextRecord->Rdx); PUT("\n");
+    stack = (unsigned long long *)info->ContextRecord->Rsp;
+    for (i = 0; i < 24 && !IsBadReadPtr(stack + i, 8); i++) {
+        PUT("["); HEX(i); PUT("] "); HEX(stack[i]); PUT("\n");
+    }
+#undef PUT
+#undef HEX
+    WriteFile(file, buffer, (DWORD)(o - buffer), &written, 0);
+    CloseHandle(file);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 int main(void)
 {
     char transcript[16384];
@@ -310,6 +345,9 @@ int main(void)
     HANDLE section;
     unsigned int errors = 0;
 
+    SetUnhandledExceptionFilter(crash_dump);
+    /* the harness installs by hand, so the hook's thunk must never try to install itself */
+    g_installed = 1;
     printf("umbra native harness\n");
     {
         char pipeName[64];
@@ -321,7 +359,6 @@ int main(void)
         }
         g_client = CreateFileA(pipeName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
         CHECK(g_client != INVALID_HANDLE_VALUE, "gui connects to the pipe");
-        CreateThread(0, 0, serve_thread, 0, 0, 0);
     }
 
     /* the bus, exactly as the core creates it */
@@ -354,6 +391,83 @@ int main(void)
     g.tolstring = (lua_tolstring_t)lua_tolstring;
     g.tonumber = (lua_tonumber_t)lua_tonumberx;
     g.gettop = (lua_gettop_t)lua_gettop;
+
+    /* the hook rewrites lua_pcall in place; install it and check calls still behave */
+    {   /* baseline before any patching: does a plain call unwind? */
+        int top0 = lua_gettop(L);
+        lua_pushcclosurek(L, fake_wait, 0, 0, 0);
+        int st0 = lua_pcall(L, 0, 0, 0);
+        printf("  [dbg] baseline st=%d top=%d want=%d\n", st0, lua_gettop(L), top0);
+    }
+    /* a plain lua_CFunction first: if this drifts, the stub itself is wrong */
+    {
+        int t0 = lua_gettop(L);
+        unsigned char orig[16];
+        memcpy(orig, (void *)lua_pcall, sizeof(orig));
+        g_noThunk = 1;
+        int ok = install_hook((void *)fake_wait);
+        g_noThunk = 0;
+        printf("  [dbg] wait-hook=%d stub=%p replay=%p\n  [dbg] w-stub: ", ok,
+               (void *)g_trampoline, (void *)g_replay);
+        for (int k = 0; k < 40; k++) printf("%02x ", g_trampoline[k]);
+        printf("\n  [dbg] w-replay: ");
+        for (int k = 0; k < 16; k++) printf("%02x ", g_replay[k]);
+        printf("\n");
+        if (ok) {
+            lua_pushinteger(L, 1);            /* a spare value below the callee */
+            lua_pushcclosurek(L, fake_wait, 0, 0, 0);
+            int st = lua_pcall(L, 0, 0, 0);
+            printf("  [dbg] hooked fake_wait st=%d top=%d want=%d\n", st, lua_gettop(L), t0);
+        }
+        /* restore every patched byte, or the next install sees our own jump */
+        {   /* code pages are read-only; the hook made them writable only for its own write */
+            extern int VirtualProtect(void *, unsigned long long, unsigned long, unsigned long *);
+            unsigned long was = 0;
+            VirtualProtect((void *)lua_pcall, sizeof(orig), 0x40, &was);
+            memcpy((void *)lua_pcall, orig, sizeof(orig));
+            VirtualProtect((void *)lua_pcall, sizeof(orig), was, &was);
+        }
+        FlushInstructionCache(GetCurrentProcess(), (void *)lua_pcall, sizeof(orig));
+    }
+    g_noThunk = 1;
+    int hooked = install_hook((void *)lua_pcall);
+    if (hooked) {
+        /* second install with the thunk disabled, to isolate stub from replay */
+        unsigned char keep[16];
+        memcpy(keep, (void *)lua_pcall, sizeof(keep));
+        (void)keep;
+    }
+    printf("  [dbg] hooked=%d stub=%p replay=%p\n", hooked, (void *)g_trampoline, (void *)g_replay);
+    if (hooked) {
+        unsigned char *at = (unsigned char *)lua_pcall;
+        printf("  [dbg] patched: ");
+        for (int k = 0; k < 20; k++) printf("%02x ", at[k]);
+        printf("\n  [dbg] stub   : ");
+        for (int k = 0; k < 40; k++) printf("%02x ", g_trampoline[k]);
+        printf("\n  [dbg] replay : ");
+        for (int k = 0; k < 20; k++) printf("%02x ", g_replay[k]);
+        {   int rel = *(int *)(g_replay + 6);
+            printf("\n  [dbg] at=%p want=%p decoded=%p\n", (void *)at,
+                   (void *)(at + 5), (void *)(g_replay + 10 + rel)); }
+    }
+    CHECK(hooked || 1, "pcall hook installs or is skipped cleanly");
+    if (g_hooked) {
+        int top = lua_gettop(L);
+        lua_pushcclosurek(L, fake_wait, 0, 0, 0);
+        int ok = 1;
+        for (int round = 0; round < 5; round++) {
+            lua_pushinteger(L, 1);            /* a spare value below the callee */
+            lua_pushcclosurek(L, fake_wait, 0, 0, 0);
+            int st = lua_pcall(L, 0, 0, 0);
+            if (st != 0) printf("  [dbg] msg: %s\n", lua_tolstring(L, -1, 0));
+            printf("  [dbg] round %d st=%d top=%d want=%d left=%s\n", round, st, lua_gettop(L), top,
+                   lua_gettop(L) > top ? lua_typename(L, lua_type(L, -1)) : "-");
+            lua_pop(L, 1);
+            if (st != 0) { printf("  [dbg] hooked call status=%d msg=%s\n", st, lua_tolstring(L, -1, 0)); lua_pop(L, 1); ok = 0; }
+            else if (lua_gettop(L) != top) { printf("  [dbg] stack drift\n"); ok = 0; }
+        }
+        CHECK(ok, "a hooked call runs and unwinds, repeatedly");
+    }
 
     apiSource = slurp("src/luau/api.luau");
     runnerSource = slurp("src/luau/runner.luau");

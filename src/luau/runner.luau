@@ -136,6 +136,8 @@ end
 -- heartbeat, not RenderStepped: it keeps running while the client is unfocused, and a
 -- script that yields cannot stall it because every script gets its own thread
 RunService.Heartbeat:Connect(function()
+    -- the core has no thread: this is where its pipe is serviced
+    if type(BRIDGE.pump) == "function" then pcall(BRIDGE.pump) end
     local ok, err = pcall(step)
     if not ok then write(OUT_ERROR, 0, "runner: " .. tostring(err)) end
 end)

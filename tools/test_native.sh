@@ -27,4 +27,14 @@ x86_64-w64-mingw32-g++ -std=c++17 -O1 -g -fno-ipa-icf -DUMBRA_HOST \
 
 # the calibration path looks for the client's module name, so test under that name too
 cp "$OUT/host.exe" "$OUT/RobloxPlayerBeta.exe"
-WINEPREFIX=/config/.wx DISPLAY=:1.0 /usr/lib/wine/wine64 "$OUT/RobloxPlayerBeta.exe"
+# every run is kept; a non-zero exit also keeps a numbered copy beside it
+set +e
+WINEPREFIX=/config/.wx DISPLAY=:1.0 /usr/lib/wine/wine64 "$OUT/RobloxPlayerBeta.exe" 2>&1 | tee "$OUT/last.log"
+status="${PIPESTATUS[0]}"
+set -e
+if [ "$status" -ne 0 ]; then
+  cp "$OUT/last.log" "$OUT/crash-$(date +%s).log"
+  [ -f "$OUT/crash.log" ] && cp "$OUT/crash.log" "$OUT/crash-$(date +%s)-app.log"
+  echo "kept $OUT/last.log"
+fi
+exit "$status"

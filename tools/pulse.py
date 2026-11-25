@@ -46,6 +46,7 @@ def beat(args):
     state = load()
     previous = state.get(args.side, {})
     state[args.side] = {"at": time.time(), "iso": now(), "note": args.note or previous.get("note", ""),
+                        "state": args.state,
                         "alerted": False, "beats": previous.get("beats", 0) + 1}
     save(state)
     if os.path.exists(ALERT):
@@ -106,6 +107,7 @@ def main():
     p = sub.add_parser("beat")
     p.add_argument("--as", dest="side", required=True, choices=list(SIDES))
     p.add_argument("--note")
+    p.add_argument("--state", choices=["working", "stuck"], default="working")
     p.set_defaults(func=beat)
     p = sub.add_parser("status")
     p.set_defaults(func=status)

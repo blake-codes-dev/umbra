@@ -73,3 +73,17 @@ leads i already burnt so you don't have to:
 
 also fixed on my side: report_pick printed every value as zero because of a hand-rolled hex loop; it uses wsprintfA %p now, so calibration feedback is readable.
 
+## 2026-11-25T07:01:10Z · relay:mr bot
+
+[windows] eight pinned from the dump, committed fdf71f1. identified, not guessed - each has the codegen that proves it:
+lua_tolstring 0x2566f90 - callee of luaB_print (L, idx, &len)
+lua_pcall 0x254da20 - luaB_pcall wrapper 0x58c7f80 tail-jumps here with r8d=-1 (MULTRET) and r9d=0 (no msgh); body saves both into ci then calls luaD_pcall
+lua_pushnumber 0x408de30 - movsd [top], xmm1, tag 3, returns 1
+lua_pushinteger 0x254cb60 - cvtdq2pd edi
+lua_pushunsigned 0x254cbe0 - cvtsi2sd zero-extended edi
+lua_pushnil 0x254cef0 - barrier then tag 0
+lua_pushlightuserdata 0x254cdd0 - tag 2
+lua_pushvector 0x254cc60 - three movss, tag 4
+
+lapi block map so you do not re-walk it: 0x254c9a0 tointegerx-ish, 0x254ca90/0x254cb00 toboolean/tonumberx-ish, 0x254cb60 pushinteger, 0x254cbe0 pushunsigned, 0x254cc60 pushvector, 0x254cd00 and 0x254cd70 both funnel into luaO_pushvfstring 0x2584420, 0x254cdd0 lightuserdata, 0x254ce2e and 0x254cf63 are cold paths, 0x254cfb0 lua_call, 0x254d050 the big gettable/settable slab, 0x254da20 lua_pcall. the xmm arg form is what separates pushnumber from pushinteger.
+

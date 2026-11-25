@@ -345,6 +345,18 @@ static int tween_create(lua_State *state)
     return 1;
 }
 
+/* a real signal: Connect must reach signal_connect or the runner never gets its Heartbeat */
+static void push_signal(lua_State *state)
+{
+    lua_createtable(state, 0, 3);
+    lua_pushcclosurek(state, ui_signal_connect, "Connect", 0, 0);
+    lua_setfield(state, -2, "Connect");
+    lua_pushcclosurek(state, signal_connect, "Wait", 0, 0);
+    lua_setfield(state, -2, "Wait");
+    lua_pushcclosurek(state, ui_noop, "Once", 0, 0);
+    lua_setfield(state, -2, "Once");
+}
+
 static int service_by_name(lua_State *state)
 {
     int base = lua_gettop(state);                 /* leaves exactly one value behind */
@@ -370,6 +382,16 @@ static int service_by_name(lua_State *state)
     push_object(state);                           /* CurrentCamera */
     lua_setfield(state, -2, "CurrentCamera");
 
+    push_signal(state);                           /* the loop signals the runner pumps on */
+    lua_setfield(state, -2, "Heartbeat");
+    push_signal(state);
+    lua_setfield(state, -2, "RenderStepped");
+    push_signal(state);
+    lua_setfield(state, -2, "Stepped");
+    push_signal(state);
+    lua_setfield(state, -2, "InputBegan");
+    push_signal(state);
+    lua_setfield(state, -2, "InputEnded");
     lua_pushcclosurek(state, ui_noop, "GetPlayers", 0, 0);
     lua_setfield(state, -2, "GetPlayers");
     lua_pushcclosurek(state, ui_signal_connect, "PlayerAdded", 0, 0);

@@ -291,6 +291,9 @@ async def poll_loop(state, own_id, interval):
             ticks += 1
             if ticks % 20 == 1:                          # roughly once a minute at 3s
                 watchdog()
+            if ticks % 10 == 1:                          # the #status board, twice a minute
+                subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "status.py")],
+                               capture_output=True, timeout=25)
         except Exception as error:
             print("%s  poll error: %s" % (now(), error))
         await asyncio.sleep(interval)

@@ -88,6 +88,20 @@ notification rather than something to notice later. Answer in the channel as `[w
 gets mirrored to my mailbox - and answer as soon as you see it, even if the answer is "not yet".
 `/say <text>` is the one-way version if he only wants to tell one of us something.
 
+## Working continuously
+
+Three layers, in order of preference:
+
+1. **In the app:** `schedule_task` with `bindToCurrentThread: false`, `{type:'interval', everyMs:600000}`,
+   and a prompt that reads `tools/brief.py` output, does the top `state/agent/TODO.md` item, beats
+   after every step, and stops the turn when blocked. Fresh thread per run, so a crash costs ten
+   minutes instead of the shift.
+2. **Outside the app:** `tools\agent_install.bat` registers scheduled task `LyphenAgent` every five
+   minutes running `tools\agent_loop.bat`. That loop takes one turn at a time behind a lock file and
+   breaks a lock older than 40 minutes. Remove with `schtasks /delete /tn LyphenAgent /f`.
+3. **The queue is the memory:** `state/agent/TODO.md`, top first, and `tools/brief.py` prepends it
+   with unread mail, the other clock and `ALERT.md`, so a restart resumes instead of starting cold.
+
 **Beat after every step:** `tools\pulse.bat beat "pinning gettop"`. A stale beat makes the watchdog
 shout in `#relay` and drop `state/agent/ALERT.md` with your last note as the resume point, so dying
 mid-build is survivable instead of leaving me waiting on a reply forever. `#relay` on Discord is bridged to the same mailbox by

@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795614965.682501,
-  "iso": "2026-11-25T13:56:05Z",
-  "note": "answered the never-fires wall: hook is re-arm, not the door",
+  "at": 1795615385.9741557,
+  "iso": "2026-11-25T14:03:05Z",
+  "note": "live.bat home screen; nohook bisect switch for the 30s death",
   "state": "working",
   "alerted": false,
-  "beats": 12
+  "beats": 14
  },
  "windows": {
   "at": 1795614841.399289,

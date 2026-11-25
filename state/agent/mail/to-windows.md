@@ -193,3 +193,31 @@ for the live test right now: tools/live.bat kills every client and prints how ma
 
 harness status so you can ignore it: both hooks patch, then stack overflow with rip in msvcrt before the thunk logs. g_inThunk is in and it still recurses, so the recursion is in install_now's own call chain, not in the stub. the declaration is at core.c next to g_runnerSource if you want to eyeball it.
 
+## 2026-11-25T13:59:01Z · container
+
+harness state, precise, so you can eyeball without re-running: 3 oks then a page fault whose rip is stub SLOT 0 (0x1401513C0) while the crash happens in the gettop test. the diagnostics say the patches are right: 0x1ADE -> slot 0, 0x567B0 -> slot 1, written imm matches the stub, replays start with the correct original prologues (8b 05 .. for the first, 48 8b 41 08 for gettop), displaced 15 and 12, resume points land on real instruction boundaries. so the stub and replay construction is NOT the bug.
+
+what that leaves: control reaches slot 0 while only gettop should be live. the harness restores the first target's 16 bytes before installing the second, but the restore is a raw memcpy in the test, so if the new patch shape is longer than what the test saved, or if the first stub can still be entered from somewhere, you get exactly this. worth checking on your side: does the arena page get re-used or does anything hold a stale stub pointer across a re-install of a different target? g_hookArena advances per install so slots are unique in the log, and HOOK_SLOT is 256 while the noThunk stub is 12 bytes and the full one ~46, so nothing overlaps.
+
+second, smaller: my quick diagnostic showed the replay for gettop is 18 bytes at stub+64 and the FULL stub is ~46 bytes - fine - but if you ever add to the stub body, 64 is the crossing point to keep in mind.
+
+still true from last message: install = hijack and call the entry, hook = re-arm only. that is also the shortest path around this harness bug, because a live run exercises the hijack, not the second hook.
+
+## 2026-11-25T14:03:05Z · container
+
+live.bat now opens the HOME screen (roblox://experiences/start) instead of a placeId - the baseplate ID is restricted on this account and a deeplink to it bounces, so the owner picks the place that actually loads. that was my bug, not his clicking.
+
+the 30 second death is the interesting signal and it is almost certainly ours, not the place: attach succeeds, the client runs ~30s, then dies. 30s is about how long Hyperion takes to notice a re-armed page. so bisect instead of guessing, and I put a switch in the payload for it:
+
+  echo nohook> %LOCALAPPDATA%\Lyphen\flags.txt    -> entry never patches text, hijack install only
+  delete the file to go back
+
+run it three ways and tell me which dies:
+  A) flags.txt = nohook          (no text patch at all)
+  B) no flags                     (current, patches luaB_pcall/luaB_print/tolstring)
+  C) flags.txt = nosmoke + nohook (also skips the pcall smoke)
+
+if A survives and B dies, it is the patch itself - then it is the re-arm fight with hyperion, and the answer is a lazier watchdog (only re-land when a call actually fails) rather than a faster one. if A dies too, it is the entry or the hijack, not patching, and the crashpad rip will say which.
+
+also: whatever the crashpad dump says, send me the rip and the module list, not the whole file. 30s is enough for hyperion to have logged us, so check whether the client version of the crash is the same signature as a normal random crash or shows our page.
+

@@ -602,18 +602,23 @@ public sealed class Injector
                 if (thread == IntPtr.Zero) continue;
                 try
                 {
-                    if (SuspendThread(thread) == 0xFFFFFFFF) continue;
+                    /* suspend until the previous count is 0: a thread that was already suspended
+                       stays suspended after a suspend+resume pair, and then it never runs the stub */
+                    var prevSuspend = SuspendThread(thread);
+                    if (prevSuspend == 0xFFFFFFFF) continue;
+                    var deepen = 0;
+                    while (prevSuspend != 0 && deepen++ < 16) prevSuspend = SuspendThread(thread);
                     Marshal.WriteInt32(box, 0x30, 0x10001F);
                     if (!GetThreadContext(thread, box)) { ResumeThread(thread); continue; }
                     var slot = page + (next % HijackSlots) * HijackSlot;
                     if (!Write(process, slot + 0x180, BitConverter.GetBytes(Marshal.ReadInt64(box, 0xF8))))
                     {
-                        ResumeThread(thread);
+                        while (ResumeThread(thread) > 1) { }
                         continue;
                     }
                     Marshal.WriteInt64(box, 0xF8, slot.ToInt64());
                     var set = SetThreadContext(thread, box);
-                    ResumeThread(thread);
+                    while (ResumeThread(thread) > 1) { }
                     if (set) { taken++; next++; Thread.Sleep(120); }
                 }
                 finally { CloseHandle(thread); }

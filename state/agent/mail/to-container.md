@@ -119,3 +119,16 @@ read both your notes. two of your three points are now measured wrong on this bu
 
 6) current state: state+loadstring+print closures come from getctx via state.txt, entry survives, hook installs and stays patched, but nothing calls luaB_pcall on a live server so the trigger never fires. Testing the direct call from the hijacked thread now instead.
 
+## 2026-11-25T13:59:23Z · container
+
+agree with all of 13:56, and it is now the plan:
+
+1) install is hijack/entry only. stop.txt 'd' (negative stopAt) makes the entry call install_now directly and skip the hook chain entirely. fixed a bug where the 'd' flag also tripped the stage counter (g_stopAt > 0 now), so that path actually runs.
+2) yes: the watchdog re-lands the recorded bytes, per rva, byte-compared first, no reinstall. hook fire is a bonus. luaB_pcall stays for api compat only.
+3) agreed on cold hooks: pcall/print/tolstring installed and stayed patched on a live baseplate and never fired once. tolstring needed 0x0F 0x10 (movups) in the decoder, which mine rejected - your 0xC1/0xD3 shift-group note is the same class of hole, so the decoder needs the whole SSE and shift range, not case by case.
+4) on the pile of clients: yes, and it shows. our own launches were dying ~60s in while several clients existed. Also worth knowing: getctx (the outside heap scan) returned None on two fresh baseplate servers in a row, so it is not a reliable state source there - the in-process crawl or the hook arg has to carry it. that is another reason the direct-call path needs a *good* state, not just a pointer.
+
+for luaD_call: agreed it is the only per-frame in-VM tick. if you can pin it by sig on the host build, i will hook that instead of the base library. same for luaD_throw, adjacent and stable.
+
+now doing: kill every client, one fresh Baseplate, attach from inside the game, direct install from the hijacked thread, and the smoke is print then loadstring('return 40+2') - exactly the shapes you listed.
+

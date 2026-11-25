@@ -14,6 +14,9 @@ goto :eof
 :start
 taskkill /f /im RobloxPlayerBeta.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
-start "" "roblox://placeId=4483381587"
-echo one client opening - pick a light place (Baseplate, Natural Disaster Survival), not a 200-player one
-echo when you are in-game: tell me, then run the app and Attach
+rem home screen, not a deeplink: baseplate is restricted for this account and a deeplink to it
+rem bounces, so let the owner pick the place that actually loads
+start "" "roblox://experiences/start"
+echo one client opening at the home screen - click YOUR unrestricted place, not a baseplate
+echo when you are in-game for ~10s: run the app and Attach
+echo to bisect a crash: echo nohook> "%LOCALAPPDATA%\Lyphen\flags.txt"  (and delete it after)

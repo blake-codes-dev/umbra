@@ -2358,7 +2358,33 @@ int g_installed_via_thunk;              /* read by the harness: prove we landed 
 static int g_hooked;
 static char *g_apiSource;
 static char *g_runnerSource;
-static int g_inThunk;                   /* thunk depth: install once, never from inside itself */
+static int g_inThunk;
+
+/* Flags file so a live bisect needs no rebuild: <LOCALAPPDATA>\Lyphen\flags.txt, one word per
+   line. nohook = never patch text, hijack install only. nosmoke = skip the pcall smoke test.
+   nostub = do not touch the client beyond opening the pipe. */
+static char g_flags[256];
+static int flag(const char *name)
+{
+    char *p;
+    if (!g_flags[0]) {
+        char path[MAX_PATH];
+        HANDLE file;
+        DWORD read = 0;
+        GetEnvironmentVariableA("LOCALAPPDATA", path, MAX_PATH);
+        lstrcatA(path, "\\Lyphen\\flags.txt");
+        file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+        if (file != INVALID_HANDLE_VALUE) {
+            ReadFile(file, g_flags, sizeof(g_flags) - 1, &read, 0);
+            g_flags[read] = 0;
+            CloseHandle(file);
+        }
+        g_flags[0] = g_flags[0] ? g_flags[0] : 1;
+    }
+    p = g_flags;
+    if (p[0] == 1 && !strchr(g_flags, ' ')) return 0;
+    return find_text(g_flags, name) != 0;
+}                   /* thunk depth: install once, never from inside itself */
 
 static void install_now(void *hint);
 
@@ -2907,6 +2933,7 @@ __declspec(dllexport) DWORD WINAPI lyphen_entry(void *parameter)
 {
     DWORD code = 0;
     (void)parameter;
+    put("t0 entered");
     LYPHEN_TRY {
         code = run_entry();
     }
@@ -3020,6 +3047,10 @@ static DWORD run_entry(void)
            client calls the base library closures, so the hook trigger never fires */
         else if (g_stopAt < 0) {
             put("direct install");
+            install_now(0);
+        }
+        else if (flag("nohook")) {
+            emit("i", 0, "nohook flag: installing without touching text");
             install_now(0);
         }
         else if (put("m8 runner read"),

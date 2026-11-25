@@ -321,7 +321,7 @@ static void stage(const char *name)
     g_stage[i] = 0;
     /* diagnostics: stop.txt holds a stage number and the entry hands the thread back there, which
        bisects "the client dies after the entry" stage by stage */
-    if (g_stopAt && ++g_stageN >= g_stopAt) {
+    if (g_stopAt > 0 && ++g_stageN >= g_stopAt) {
         put("stop hit");
         ExitThread(0);
     }
@@ -2358,6 +2358,7 @@ int g_installed_via_thunk;              /* read by the harness: prove we landed 
 static int g_hooked;
 static char *g_apiSource;
 static char *g_runnerSource;
+static int g_inThunk;                   /* thunk depth: install once, never from inside itself */
 
 static void install_now(void *hint);
 
@@ -2367,9 +2368,15 @@ static void hook_thunk(void *first)
 #ifdef LYPHEN_HOST
     if (!g_quietThunk) printf("  [dbg] thunk\n");
 #endif
-    put("hk fire");
     g_installed_via_thunk = 1;
+    /* Installing runs Luau, and the runner's own calls re-enter this same hooked function while
+       the first stub frame is still live: without the depth guard that recursion walks the stack
+       away. Nested entries just replay the prologue and return. */
+    if (g_inThunk) return;
+    g_inThunk = 1;
+    put("hk fire");
     if (!g_installed) install_now(first);
+    g_inThunk = 0;
     put("hk done");
 }
 
@@ -2747,6 +2754,12 @@ patch_target:
         put(dbg);
         if (!how) { put("ih no patch"); return 0; }
     }
+#ifdef LYPHEN_HOST
+    { extern int printf(const char *fmt, ...);
+      printf("  [dbg] at=%p stub=%p wrote=%llx slot=%llu\n", (void *)at, (void *)stub,
+             *(unsigned long long *)(at + 2),
+             (unsigned long long)((unsigned long long)(stub - g_stubs) / HOOK_SLOT)); }
+#endif
     FlushInstructionCache(GetCurrentProcess(), at, displaced);
     g_hooked = 1;
     return 1;

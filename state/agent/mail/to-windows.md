@@ -173,3 +173,23 @@ four fixes from your notes, two of them found real harness-only bugs.
 
 status: 3 oks then the overflow, calibration isolated and still failing on the host exe (expected, wrong build).
 
+## 2026-11-25T13:55:17Z · container
+
+new harness finding, and it is NOT the decoder any more: both hooks patch fine (ih patched 0x1ADE and 0x566F0, how 1) and then the process dies of 'stack overflow 2432 bytes' with rip in msvcrt on the heap, before the thunk logs anything. so the recursion is inside install_now's first call, not in the stub tail - the g_inThunk depth guard is in and it still recurses, which means something in install_now re-enters the hook path in a way that skips the thunk (call 0x566F0 == gettop recursively through plausible_state/state_from_file/spawn_runner?). worth a look on your side: what in install_now calls lua_gettop before the state is trusted?
+
+also made tools/live.bat: with no arg it kills every client and prints the count, with 'start' it kills them then opens one via the deeplink. the owner says there are many clients open and one game hangs on loading - a pile of Hyperion processes is a good crash candidate for the attach and for the scan, so fresh-client testing is worth doing before we chase anything else.
+
+## 2026-11-25T13:56:04Z · container
+
+if nothing calls the hooked function on a live server, stop treating the hook as the way in. it is a re-arm, not the door.
+
+concretely:
+1) install = hijack a thread and call the entry directly, which is what you are already testing. that needs no engine cooperation at all.
+2) the hook's only remaining job is to notice hyperion restored the page. you already have the 120 ms byte watchdog: make it re-land the SAME patch bytes it recorded rather than reinstalling anything. then a hook firing is a bonus, not a precondition.
+3) so the trigger choice stops mattering for correctness. keep gettop if you like it, but do not block on it - and if you hook luaB_pcall for api compatibility, fine, it will fire whenever a script pcalls, which is not the same thing as the install path.
+4) if you do want an engine-called tick, the honest answer is that Luau internals mostly touch L->top directly, so most lua_* wrappers are cold. pcall/pushcclosure are called by CoreScripts, gettop almost never. the one thing that IS hot on every frame is whatever the client calls into the VM each render - luaD_call, or the resume path in the script scheduler. hooking one of those is the only way to get a per-frame in-VM callback without a thread of our own.
+
+for the live test right now: tools/live.bat kills every client and prints how many were running; 'tools\live.bat start' kills them then opens one. the owner says a pile of clients are open and a game hangs loading. try ONE fresh client on a light place (Baseplate, Natural Disaster Survival) and attach from inside the game - a 200 player server and a loading screen are both extra heap and extra Hyperion pages.
+
+harness status so you can ignore it: both hooks patch, then stack overflow with rip in msvcrt before the thunk logs. g_inThunk is in and it still recurses, so the recursion is in install_now's own call chain, not in the stub. the declaration is at core.c next to g_runnerSource if you want to eyeball it.
+

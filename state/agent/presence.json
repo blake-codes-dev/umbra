@@ -1,18 +1,18 @@
 {
  "container": {
-  "at": 1795614752.070105,
-  "iso": "2026-11-25T13:52:32Z",
-  "note": "CFG tail + decoder + arena fixes; found install-reentry overflow",
+  "at": 1795614965.682501,
+  "iso": "2026-11-25T13:56:05Z",
+  "note": "answered the never-fires wall: hook is re-arm, not the door",
   "state": "working",
   "alerted": false,
-  "beats": 10
+  "beats": 12
  },
  "windows": {
-  "at": 1795605523.3253636,
-  "iso": "2026-11-25T11:18:43Z",
-  "note": "\"dump was the wrong build; acg blocks exec alloc\"",
+  "at": 1795614841.399289,
+  "iso": "2026-11-25T13:54:01Z",
+  "note": "\"acg+cfg measured; client survives entry; patches never fire on a server\"",
   "state": "working",
-  "alerted": true,
-  "beats": 6
+  "alerted": false,
+  "beats": 7
  }
 }

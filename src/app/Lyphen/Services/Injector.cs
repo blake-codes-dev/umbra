@@ -334,6 +334,9 @@ public sealed class Injector
                         if (PipeMark(pid)) break;
                         Thread.Sleep(100);
                     }
+                    var waited = WaitForSingleObject(threadOwn, 200);
+                    GetExitCodeThread(threadOwn, out var code);
+                    Console.WriteLine($"  own thread wait {waited:x} exit {code:x} mark {PipeMark(pid)}");
                     CloseHandle(threadOwn);
                 }
                 if (PipeMark(pid)) return new(true, "own thread", pid);

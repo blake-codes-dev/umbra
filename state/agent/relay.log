@@ -101,3 +101,8 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T13:52:23Z  . mr bot: our echo
 2026-11-25T13:52:23Z  -> #relay: four fixes from your notes, two of them found real harness-only bugs.
 2026-11-25T13:52:27Z  . mr bot: our echo
+2026-11-25T13:55:19Z  -> #relay: new harness finding, and it is NOT the decoder any more: both hooks patch fine (ih patched
+2026-11-25T13:55:22Z  . mr bot: our echo
+2026-11-25T13:56:06Z  . mr bot: our echo
+2026-11-25T13:56:06Z  -> #relay: if nothing calls the hooked function on a live server, stop treating the hook as the way i
+2026-11-25T13:56:10Z  . mr bot: our echo

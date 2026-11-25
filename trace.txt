@@ -298,3 +298,12 @@ mapping into pid 30132
 mapped, mapped 84 KB, 87 apc / 2 pinned
 no pipe lyphen-30132 (is the DLL injected?)
 mapped but the pipe did not answer - check the client
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 30264
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 27552
+mapped, mapped 84 KB, 90 apc / 3 pinned
+no pipe lyphen-27552 (is the DLL injected?)
+mapped but the pipe did not answer - check the client
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 27552

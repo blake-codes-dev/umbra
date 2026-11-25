@@ -740,6 +740,11 @@ int main(int argc, char **argv)
         for (int k = 0; k < 16; k++) printf("%02x ", g_replay[k]);
         printf("\n");
         if (ok) {
+            printf("  [dbg] w2-stub: ");
+            for (int k = 0; k < 40; k++) printf("%02x ", g_trampoline[k]);
+            printf("\n  [dbg] w2-replay: ");
+            for (int k = 0; k < 24; k++) printf("%02x ", g_replay[k]);
+            printf("\n");
             lua_pushinteger(L, 1);            /* a spare value below the callee */
             lua_pushcclosurek(L, fake_wait, 0, 0, 0);
             int st = lua_pcall(L, 0, 0, 0);

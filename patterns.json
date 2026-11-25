@@ -123,6 +123,14 @@
    "hits": 1,
    "sig": "A0 53 3C 6C B3 14 68 E4 4A BE BB 4F 09 C2 FB AA D2 9F D5 22 0A 03 2B 4F 48 97 D6 09 FC B3 5D B8",
    "note": "live-derived"
+  },
+  {
+   "name": "lua_tolstring",
+   "string_va": null,
+   "func_va": "0x2566f90",
+   "sig": "4C 89 44 24 18 55 56 57 41 56 48 8D 6C 24 B8 48 81 EC 48 01 00 00 48 63 F2 4D 8B F0 8B D6 48 8B",
+   "hits": 1,
+   "note": "identified as the callee of luaB_print (L, idx, &len), sig unique in the dump"
   }
  ],
  "client_version": "2.748.1526.0"

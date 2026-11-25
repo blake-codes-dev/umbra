@@ -1639,15 +1639,7 @@ static void *find_indexed(int wantNumber)
 static void report_pick(const char *label, void *at)
 {
     char line[96];
-    char *o = line;
-    const char *a = "calibrated ";
-    static const char *digits = "0123456789abcdef";
-    int i;
-    while (*a) *o++ = *a++;
-    while (*label) *o++ = *label++;
-    *o++ = '=';
-    for (i = 0; i < 16; i++) *o++ = digits[((unsigned long long)at >> (60 - 4 * i)) & 0xF];
-    *o = 0;
+    wsprintfA(line, "calibrated %s=%p", label, at);
     emit("i", 0, line);
     put(line);
 }

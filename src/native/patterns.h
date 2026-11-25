@@ -35,9 +35,9 @@ static const unsigned char LYPHEN_SIG_LUA_PUSHNUMBER[] = { 0xCC };
 #define LYPHEN_RVA_LUA_PUSHBOOLEAN 0x0u
 static const unsigned char LYPHEN_SIG_LUA_PUSHBOOLEAN[] = { 0xCC };
 #define LYPHEN_SIGLEN_LUA_PUSHBOOLEAN 0u
-#define LYPHEN_RVA_LUA_TOLSTRING 0x0u
-static const unsigned char LYPHEN_SIG_LUA_TOLSTRING[] = { 0xCC };
-#define LYPHEN_SIGLEN_LUA_TOLSTRING 0u
+#define LYPHEN_RVA_LUA_TOLSTRING 0x2566f90u
+static const unsigned char LYPHEN_SIG_LUA_TOLSTRING[] = { 0x4C, 0x89, 0x44, 0x24, 0x18, 0x55, 0x56, 0x57, 0x41, 0x56, 0x48, 0x8D, 0x6C, 0x24, 0xB8, 0x48, 0x81, 0xEC, 0x48, 0x01, 0x00, 0x00, 0x48, 0x63, 0xF2, 0x4D, 0x8B, 0xF0, 0x8B, 0xD6, 0x48, 0x8B };
+#define LYPHEN_SIGLEN_LUA_TOLSTRING 32u
 #define LYPHEN_RVA_LUA_TONUMBER 0x0u
 static const unsigned char LYPHEN_SIG_LUA_TONUMBER[] = { 0xCC };
 #define LYPHEN_SIGLEN_LUA_TONUMBER 0u

@@ -15,8 +15,10 @@ No key system. No ads. No watermark.
 
 Pre-alpha, developed against the Microsoft Store / GDK client `2.748.1526.0`.
 The injector is verified (manual map, no module list entry, no new thread, client stable).
-Luau state discovery and the script runner are in progress — see [PLAN.md](PLAN.md) and
-[WORKLOG.md](WORKLOG.md).
+State discovery, the runner and the whole hook path now pass a 29-check harness including a menu
+smoke test and live calibration — see [PLAN.md](PLAN.md) and [WORKLOG.md](WORKLOG.md), and
+[docs/hooks.md](docs/hooks.md) for the invariants the patching has to respect. A second product is
+scoped in [docs/fortnite.md](docs/fortnite.md).
 
 ## Layout
 

@@ -88,3 +88,31 @@ Consequence: a byte scan can only ever see executed pages, so pinned rvas remain
 the right answer and calibrate is mostly a diagnostic.
 Also: state_from_scriptcontext now disarms each 4 KB page as it walks and bounds
 every deref through window_ok(), so the 1 GB heap walk no longer trips guards.
+
+## 2026-11-25 05:55 - the dump is a different build, and acg
+Two measured facts that explain a day of dead ends:
+
+1. `dump/merged-all.bin` is **not** the binary we attach to. Sections match to the byte (both are
+   2.748.1526) but the bytes at `0x58c2a40`, `0x2566f90`, `0x254da20`, `0x2584420` are different in
+   the live client, and the file on disk at those rvas is ciphertext. So every rva derived from the
+   dump is stale. The ones that work were measured live: `tools/resolve_names.py` walks the globals
+   table (TString key -> tag 7 value -> closure -> closure+0x28) and returns real rvas - pcall
+   `0x58c8030`, print `0x41dc170`, loadstring `0x41dc080`, tostring `0x58c8a70`, type `0x58c6820`.
+   Those three are pinned now; the rest of patterns.h needs the same treatment.
+
+2. The client runs with **Arbitrary Code Guard**. `VirtualAlloc(PAGE_EXECUTE_READWRITE)` fails with
+   `1655 "the operation was blocked as the process prohibits dynamic code generation"`, and so does
+   `VirtualProtect` on an image page. That is why no hook ever installed: the stub page could not be
+   allocated and the patch could not be written. Fix in progress: stubs live in a `.lystub` section
+   of the payload (mapped `RWX` from the headers) and patches go through `NtProtectVirtualMemory`.
+
+Third, a smaller one: `luaB_print` / `luaB_pcall` called straight from the hijacked thread raise
+`0xe06d7363` (a C++ exception) inside the client, so the smoke never returns. Since our frames carry
+no C++ handler and the stub has no unwind info, that exception is not resumable for us.
+
+State discovery, which used to be a blind 512 MB crawl that killed the client, now works from
+outside: `tools/getctx.py <pid>` finds a resting `lua_State` (gs+0x2f0 -> L, L+0x68 -> gs,
+base==top, ci==ciBase) plus the loadstring/print closures by scanning for their code pointer at
+closure+0x28, and writes `%LOCALAPPDATA%\Lyphen\state.txt` as "state closure print". The payload
+parses that file. Offsets verified against a real state: `L+0x20` ciBase, `L+0x58` ci, `L+0x68`
+global, `L+0x70` func, `L+0x78` base, `L+0x80` top, `nci` at `L+0x34`.

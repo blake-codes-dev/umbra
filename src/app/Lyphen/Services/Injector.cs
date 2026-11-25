@@ -32,7 +32,8 @@ public sealed class Injector
         0x0008 | 0x0010 | 0x0020 | 0x00100000,                      // no thread create
     };
     private const uint MemCommitReserve = 0x3000;
-    private const uint PageExecuteReadWrite = 0x40;
+    internal const uint PageExecuteReadWrite = 0x40;
+    internal const uint PageExecuteWriteCopy = 0x80;
     private const uint PageReadWrite = 0x04;
     private const uint PageExecuteRead = 0x20;
     private const uint MemRelease = 0x8000;
@@ -46,10 +47,10 @@ public sealed class Injector
     private const int MarkerOffset = 0x100;
 
     [DllImport("kernel32", SetLastError = true)]
-    private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    internal static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
 
     [DllImport("kernel32", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr handle);
+    internal static extern bool CloseHandle(IntPtr handle);
 
     [DllImport("kernel32", SetLastError = true)]
     private static extern IntPtr VirtualAllocEx(IntPtr process, IntPtr at, UIntPtr size, uint type, uint protect);
@@ -105,16 +106,20 @@ public sealed class Injector
     
 
     [DllImport("kernel32", SetLastError = true)]
-    private static extern bool VirtualProtectEx(IntPtr process, IntPtr at, UIntPtr size, uint protect, out uint old);
+    internal static extern bool VirtualProtectEx(IntPtr process, IntPtr at, UIntPtr size, uint protect, out uint old);
 
     [DllImport("kernel32", SetLastError = true)]
     private static extern bool VirtualFreeEx(IntPtr process, IntPtr at, UIntPtr size, uint type);
 
-    [DllImport("kernel32", SetLastError = true)]
-    private static extern bool WriteProcessMemory(IntPtr process, IntPtr at, byte[] buffer, UIntPtr size, out UIntPtr written);
+    /// <summary>The bare rights a page patch needs; the default process handle may not carry them.</summary>
+    internal static IntPtr OpenProcessFull(int pid) =>
+        OpenProcess(0x0008 | 0x0010 | 0x0020 | 0x0400, false, pid);
 
     [DllImport("kernel32", SetLastError = true)]
-    private static extern bool ReadProcessMemory(IntPtr process, IntPtr at, byte[] buffer, UIntPtr size, out UIntPtr read);
+    internal static extern bool WriteProcessMemory(IntPtr process, IntPtr at, byte[] buffer, UIntPtr size, out UIntPtr written);
+
+    [DllImport("kernel32", SetLastError = true)]
+    internal static extern bool ReadProcessMemory(IntPtr process, IntPtr at, byte[] buffer, UIntPtr size, out UIntPtr read);
 
     [DllImport("kernel32", SetLastError = true)]
     private static extern IntPtr CreateRemoteThread(IntPtr process, IntPtr attributes, UIntPtr stack,
@@ -302,7 +307,10 @@ public sealed class Injector
                 // left as allocated: executable+writable from the start, nothing to transition
                 foreach (var section in pe.Sections)
                 {
-                    var page = section.Name == ".text" ? PageExecuteRead : PageReadWrite;
+                    /* .lystub holds the hook stubs: acg forbids making a private page executable,
+                       so it must arrive executable from the headers */
+                    var page = section.Name == ".text" ? PageExecuteRead
+                        : section.Name == ".lystub" ? PageExecuteReadWrite : PageReadWrite;
                     VirtualProtectEx(process, remote + (int)section.VirtualAddress,
                         (UIntPtr)Math.Max(section.VirtualSize, 0x1000u), page, out _);
                 }
@@ -324,11 +332,11 @@ public sealed class Injector
                 var ready = false;
                 /* the hijacked threads only take on a patched rip when they wake, so allow a
                    generous window and keep re-pinning while we wait */
-                var deadline = Environment.TickCount64 + 25000;
+                var deadline = Environment.TickCount64 + 60000;
                 var attempt = 0;
                 while (Environment.TickCount64 < deadline)
                 {
-                    if (Directory.GetFiles(@"//./pipe/", $"lyphen-{pid}").Length > 0)
+                    if (PipeMark(pid))
                     {
                         ready = true;
                         break;
@@ -337,7 +345,7 @@ public sealed class Injector
                     {
                         Injector.QueueToThreads(process, start);
                         Injector.HijackThreads(process, start, 2);
-                        Console.WriteLine($"  re-pin after {attempt * 50} ms");
+                        if (attempt % 40 == 0) Console.WriteLine($"  re-pin after {attempt * 50} ms");
                     }
                     Thread.Sleep(50);
                 }
@@ -354,12 +362,13 @@ public sealed class Injector
                     CloseHandle(thread);
                     for (var i = 0; i < 40; i++)
                     {
-                        if (Directory.GetFiles(@"//./pipe/", $"lyphen-{pid}").Length > 0) break;
+                        if (PipeMark(pid)) break;
                         Thread.Sleep(50);
                     }
                     return new(true, how + ", own thread", pid);
                 }
 
+                StartPatchPoller(pid);
                 return new(true, $"{how}, {queued} apc / {hijacked} pinned", pid);
             }
             catch (Exception)
@@ -377,6 +386,111 @@ public sealed class Injector
             CloseHandle(process);
         }
     }
+
+    /// <summary>
+    /// Arbitrary Code Guard leaves exactly one write path for image code: make the page
+    /// PAGE_EXECUTE_WRITECOPY (RWX and RW are both refused), write, and put the execute-read
+    /// protection back. The core cannot do this itself, so it appends requests to a file and this
+    /// poller applies them from outside.
+    /// </summary>
+    internal static void StartPatchPoller(int pid)
+    {
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Lyphen", "workspace", $"patch-{pid}.txt");
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            var handle = OpenProcessFull(pid);
+            if (handle == IntPtr.Zero) return;
+            try
+            {
+                var client = PeImage.RemoteModulePublic(handle, "RobloxPlayerBeta.exe").ToInt64();
+                if (client == 0) return;
+                var seen = new HashSet<long>();
+                var stop = Environment.TickCount64 + 600_000;
+                while (Environment.TickCount64 < stop)
+                {
+                    try
+                    {
+                        foreach (var line in File.ReadAllLines(path)) ApplyPatch(handle, client, line, seen);
+                    }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                    Thread.Sleep(120);
+                }
+            }
+            finally { CloseHandle(handle); }
+        });
+    }
+
+    private static void ApplyPatch(IntPtr handle, long client, string line, HashSet<long> seen)
+    {
+        var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2) return;
+        if (!long.TryParse(parts[0], System.Globalization.NumberStyles.HexNumber, null, out var rva)) return;
+        if (!seen.Add(rva)) return;
+        byte[] data;
+        try { data = Convert.FromHexString(parts[1]); } catch (FormatException) { return; }
+        if (data.Length == 0 || data.Length > 32) return;
+        var at = (IntPtr)(client + rva);
+        /* the patch reaches the stub with an indirect jmp; under control flow guard a private
+           target has to be declared valid or the first call fast-fails */
+        if (data.Length >= 12)
+        {
+            var target = BitConverter.ToInt64(data, 2);
+            if (target > 0x10000) MarkCfgTarget(handle, (IntPtr)target, 0x100);
+        }
+        uint was = 0;
+        if (!VirtualProtectEx(handle, at, (UIntPtr)data.Length, PageExecuteWriteCopy, out was))
+        {
+            Console.WriteLine($"  patch {rva:x}: no writecopy {Marshal.GetLastWin32Error()}");
+            return;
+        }
+        var ok = WriteProcessMemory(handle, at, data, (UIntPtr)data.Length, out var wrote) &&
+                 wrote == (UIntPtr)data.Length;
+        if (ok) FlushInstructionCache(handle, at, (UIntPtr)data.Length);
+        VirtualProtectEx(handle, at, (UIntPtr)data.Length, PageExecuteRead, out _);
+        Console.WriteLine($"  patch {rva:x} {(ok ? "ok" : "fail " + Marshal.GetLastWin32Error())}");
+        var back = new byte[16];
+        if (ok && ReadProcessMemory(handle, at, back, (UIntPtr)back.Length, out _))
+            Console.WriteLine($"  at {rva:x} now {Convert.ToHexString(back)}");
+        if (ok && data.Length >= 12 && LongFrom(data, 2) is long stub && stub != 0)
+        {
+            var code = new byte[40];
+            if (ReadProcessMemory(handle, (IntPtr)stub, code, (UIntPtr)code.Length, out _))
+                Console.WriteLine($"  stub {stub:x} {Convert.ToHexString(code)}");
+            else Console.WriteLine($"  stub {stub:x} unreadable");
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct CfgTarget
+    {
+        public IntPtr Offset;
+        public IntPtr Size;
+        public uint Flags;
+    }
+
+    [DllImport("kernel32", SetLastError = true)]
+    internal static extern bool SetProcessValidCallTargets(IntPtr process, IntPtr at, UIntPtr size,
+        uint count, [In, Out] CfgTarget[] targets);
+
+    /// <summary>Marks a private page's range as a legal indirect call/jump target for cfg.</summary>
+    internal static void MarkCfgTarget(IntPtr process, IntPtr target, int size)
+    {
+        var page = (IntPtr)(target.ToInt64() & ~0xFFF);
+        var one = new[] { new CfgTarget { Offset = target, Size = (IntPtr)size, Flags = 1 } };
+        var ok = SetProcessValidCallTargets(process, page, (UIntPtr)0x1000, 1, one);
+        Console.WriteLine($"  cfg {target:x} {(ok ? "marked" : "failed " + Marshal.GetLastWin32Error())}");
+    }
+
+    private static long? LongFrom(byte[] data, int at) => data.Length >= at + 8
+        ? BitConverter.ToInt64(data, at) : null;
+
+    /// <summary>The core drops a marker file next to the pipe: enumerating //./pipe/ stalls when
+    /// the core is polling it in a tight loop.</summary>
+    private static bool PipeMark(int pid) =>
+        File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Lyphen", "workspace", $"up-{pid}.tmp"));
 
     private static UIntPtr NativeSize(IntPtr process, IntPtr at)
     {
@@ -434,18 +548,28 @@ public sealed class Injector
     /// </summary>
     /* A thread parked in a kernel wait gets its rip restored from the trap frame on return, so a
        single hijack is a coin toss; take a few and let the entry's own guard pick the winner. */
+    /* Every hijacked thread needs its own stub copy: the stub stores the thread's rip and rsp in
+       immediates, so a shared slot pair is overwritten by the next hijack and the first thread then
+       resumes at the second thread's rip with its own rsp - a silent fast crash a couple of
+       seconds later. Eight slots of 0x200 are carved from the page, rip/rsp at +0x180/+0x188. */
+    private const int HijackSlot = 0x200;
+    private const int HijackSlots = 0x1000 / HijackSlot;
+
     private static int HijackThreads(IntPtr process, IntPtr start, int want)
     {
         var page = VirtualAllocEx(process, IntPtr.Zero, (UIntPtr)0x1000, MemCommitReserve, PageExecuteReadWrite);
         if (page == IntPtr.Zero) return 0;
-        var slotRip = page + 0xF00;
-        var slotRsp = page + 0xF08;
-        if (!Write(process, page, Stub(start, slotRip, slotRsp))) return 0;
-        FlushInstructionCache(process, page, (UIntPtr)0x100);
+        for (var i = 0; i < HijackSlots; i++)
+        {
+            var slot = page + i * HijackSlot;
+            if (!Write(process, slot, Stub(start, slot + 0x180, slot + 0x188))) return 0;
+        }
+        FlushInstructionCache(process, page, (UIntPtr)0x1000);
 
         var pid = GetProcessId(process);
         var box = Marshal.AllocHGlobal(0x500);
         var taken = 0;
+        var next = 0;
         try
         {
             var order = ThreadPick(process, (uint)pid, box);
@@ -459,15 +583,16 @@ public sealed class Injector
                     if (SuspendThread(thread) == 0xFFFFFFFF) continue;
                     Marshal.WriteInt32(box, 0x30, 0x10001F);
                     if (!GetThreadContext(thread, box)) { ResumeThread(thread); continue; }
-                    if (!Write(process, slotRip, BitConverter.GetBytes(Marshal.ReadInt64(box, 0xF8))))
+                    var slot = page + (next % HijackSlots) * HijackSlot;
+                    if (!Write(process, slot + 0x180, BitConverter.GetBytes(Marshal.ReadInt64(box, 0xF8))))
                     {
                         ResumeThread(thread);
                         continue;
                     }
-                    Marshal.WriteInt64(box, 0xF8, page.ToInt64());
+                    Marshal.WriteInt64(box, 0xF8, slot.ToInt64());
                     var set = SetThreadContext(thread, box);
                     ResumeThread(thread);
-                    if (set) { taken++; Thread.Sleep(120); }
+                    if (set) { taken++; next++; Thread.Sleep(120); }
                 }
                 finally { CloseHandle(thread); }
             }
@@ -576,12 +701,16 @@ public sealed class Injector
         Mov(0x49, 0xBB, slotRsp);
         code.AddRange(new byte[] { 0x49, 0x8B, 0x23 });   // mov rsp, [r11]
         Mov(0x49, 0xBB, slotRip);
-        code.AddRange(new byte[] { 0x41, 0xFF, 0x27 });   // jmp [r11]
+        /* push/ret, not an indirect jmp: the client runs with control flow guard and an indirect
+           jump to a mid-function target (a thread's saved rip always is one) faults, while a ret
+           is not a cfg-checked branch */
+        code.AddRange(new byte[] { 0x41, 0xFF, 0x33 });   // push qword ptr [r11]
+        code.Add(0xC3);                                   // ret
         return code.ToArray();
     }
 
     /// <summary>The parts of the PE format the mapper needs, and nothing else.</summary>
-    private sealed class PeImage
+    internal sealed class PeImage
     {
         public ushort Machine;
         public uint SizeOfImage;

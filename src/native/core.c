@@ -159,6 +159,7 @@ static void push_bridge(lua_State *state, const char *apiSource);
 static int cb_pump(lua_State *state);
 static int resolve(void);
 static int calibrate(unsigned char *base);
+static const char *workspace(char *path);
 static unsigned char *next_scan(unsigned char *base, size_t span, unsigned char *from,
                                unsigned char **end);
 /* inside a region: on by a page, or out to the region end when it is the last page */
@@ -168,6 +169,8 @@ static unsigned char *step_page(unsigned char *page, unsigned char *end)
 }
 static int open_pipe(void);
 static char g_stage[32] = "start";
+static void put(const char *s);
+static int g_stopAt, g_stageN;
 
 #ifndef LYPHEN_HOST   /* in the harness the real CRT is linked */
 /* ---- the few crt-owned symbols MSVC still references -----------------------------------------
@@ -316,6 +319,12 @@ static void stage(const char *name)
         i++;
     }
     g_stage[i] = 0;
+    /* diagnostics: stop.txt holds a stage number and the entry hands the thread back there, which
+       bisects "the client dies after the entry" stage by stage */
+    if (g_stopAt && ++g_stageN >= g_stopAt) {
+        put("stop hit");
+        ExitThread(0);
+    }
 }
 
 static void put(const char *s)
@@ -603,6 +612,20 @@ static const char *top_message(lua_State *state, char *out, size_t size)
 }
 
 /* source -> bytecode -> closure. Returns the same codes as luau_load so callers stay simple. */
+/* Client calls are made inside this so an api_check throw or an AV is reported against the stage
+   instead of taking the process down. The unwinder needs our table for this to be reachable at
+   all, which is why register_unwind() runs first. */
+static int g_lastCallCode;
+
+#define GUARDED(statement)                                                       \
+    (g_lastCallCode = 0,                                                         \
+     LYPHEN_TRY { (void)(statement); }                                           \
+     LYPHEN_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {                                  \
+         g_lastCallCode = (int)(unsigned)GetExceptionCode();                     \
+         put("call guarded");                                                    \
+     },                                                                          \
+     g_lastCallCode)
+
 static int load_source(lua_State *state, const char *chunkname, const char *source)
 {
     size_t size = 0;
@@ -1497,7 +1520,7 @@ static int resolve(void)
         { DWORD oldp = 0;
           if (c2 && !VirtualProtect(c2, 0x1000, PAGE_EXECUTE_READWRITE, &oldp)) c2 = 0; }
         {
-            typedef long (NTAPI *nalloc_t)(void **, ULONG_PTR, void *, ULONG_PTR *, ULONG, ULONG);
+            typedef long (NTAPI *nalloc_t)(void *, void **, ULONG_PTR, ULONG_PTR *, ULONG, ULONG);
             nalloc_t nalloc = (nalloc_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtAllocateVirtualMemory");
             void *n3 = 0; ULONG_PTR nsize = 0x1000;
             long st2 = nalloc ? nalloc(GetCurrentProcess(), &n3, 0, &nsize,
@@ -1531,8 +1554,9 @@ static int resolve(void)
     RESOLVE(gettop, lua_gettop_t, LUA_GETTOP, "lua_gettop");
     RESOLVE(loadstr, luaB_loadstring_t, LUAB_LOADSTRING, "luaB_loadstring");
     RESOLVE(pushvf, lua_pushvfstring_t, LUA_PUSHVFSTRING, "lua_pushvfstring");
-    RESOLVE(luaBpcall, lua_pcall_t, LUAB_PCALL, "luaB_pcall");
-    RESOLVE(luaBprint, luaB_loadstring_t, LUAB_PRINT, "luaB_print");
+    /* these two are lua_CFunction shaped; the cast keeps the macro single-shaped */
+    RESOLVE(luaBpcall, lua_cfunction_t, LUAB_PCALL, "luaB_pcall");
+    RESOLVE(luaBprint, lua_cfunction_t, LUAB_PRINT, "luaB_print");
 
     /* nothing measured yet (the shipped text is packed, so these are normally all zero):
        calibrate in memory and keep whatever worked */
@@ -2105,7 +2129,7 @@ static int open_pipe(void)
     wsprintfA(name, "\\\\.\\pipe\\lyphen-%u", GetCurrentProcessId());
     g.pipe = CreateNamedPipeA(name, PIPE_ACCESS_DUPLEX,
                               PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT,
-                              1, 8192, 8192, 0, 0);
+                              PIPE_UNLIMITED_INSTANCES, 8192, 8192, 0, 0);
     if (g.pipe == INVALID_HANDLE_VALUE) return 0;
     /* NOWAIT: 535 means a client is already there, 536 means we are listening - both fine,
        and either way the connection completes by itself when the gui connects */
@@ -2114,6 +2138,21 @@ static int open_pipe(void)
         CloseHandle(g.pipe);
         g.pipe = INVALID_HANDLE_VALUE;
         return 0;
+    }
+    /* The gui cannot enumerate //./pipe/ while we hammer the pipe in a wait loop (it hangs), so
+       the pipe is announced with a file instead: one name per pid, deleted when we go away. */
+    {
+        char path[MAX_PATH];
+        HANDLE mark;
+        workspace(path);
+        lstrcatA(path, "\\");
+        {
+            char tail[32];
+            wsprintfA(tail, "up-%u.tmp", GetCurrentProcessId());
+            lstrcatA(path, tail);
+        }
+        mark = CreateFileA(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+        if (mark != INVALID_HANDLE_VALUE) CloseHandle(mark);
     }
     return 1;
 }
@@ -2192,6 +2231,9 @@ static void drain_output(void)
 
 /* trailing text still waiting in the read buffer, so a fragment is not half-parsed */
 static char g_carry[4096];
+static volatile long g_patchAck;     /* rva the gui answered, +1 */
+static volatile long g_patchOk;
+static volatile long g_guiUp;        /* the gui has said hello: only then can it answer */
 static unsigned int g_carryLength;
 
 static void handle_line(const char *line)
@@ -2205,7 +2247,13 @@ static void handle_line(const char *line)
         push_command(OP_EXEC, id ? id : ++g.nextId, code);
     } else if (find_text(line, "\"cancel\"")) {
         push_command(OP_CANCEL, id, "");
+    } else if (find_text(line, "\"patched\"")) {
+        long rva = (long)json_number(line, "\"rva\":");
+        put("rp ack seen");
+        g_patchOk = find_text(line, "\"ok\":true") ? 1 : 0;
+        g_patchAck = rva + 1;
     } else if (find_text(line, "\"hello\"")) {
+        g_guiUp = 1;
         char hello[160];
         wsprintfA(hello, "{\"op\":\"ready\",\"pid\":%u,\"build\":\"%s\"}\n",
                   GetCurrentProcessId(), LYPHEN_CLIENT_VERSION);
@@ -2267,6 +2315,7 @@ static unsigned char *g_hookArena;   /* next free stub slot; each hook owns 256 
 /* A 12-byte absolute jump reaches anywhere, so the stubs do not have to be allocated: they sit in
    our own image, which is committed before the client can exhaust its commit limit. */
 static int g_stubsReady;
+#define DRY_PATCH 0
 #define HOOK_SLOT 256
 #define HOOK_SLOTS (4096 / HOOK_SLOT)
 /* Arbitrary Code Guard is on in the client ("the operation was blocked as the process prohibits
@@ -2287,7 +2336,7 @@ static HOOKREC g_hooks[HOOK_SLOTS];
 static int g_hookCount;
 #ifdef LYPHEN_HOST
 #define HOST_ONLY(x) (x)
-static int g_noThunk;                   /* harness switches: shorten the stub, silence it */
+static int g_noThunk = 1;   /* bisect: replay only, no thunk call */                   /* harness switches: shorten the stub, silence it */
 static int g_quietThunk;
 #else
 #define HOST_ONLY(x) 0
@@ -2309,8 +2358,10 @@ static void hook_thunk(void *first)
 #ifdef LYPHEN_HOST
     if (!g_quietThunk) printf("  [dbg] thunk\n");
 #endif
+    put("hk fire");
     g_installed_via_thunk = 1;
     if (!g_installed) install_now(first);
+    put("hk done");
 }
 
 /* Length of one instruction, enough for the prologues these wrappers start with. Returns 0 on
@@ -2450,11 +2501,61 @@ static int fix_replay(unsigned char *at, unsigned char *replay, int displaced)
     return 1;
 }
 
+/* ---------------- remote patching ----------------
+   Arbitrary Code Guard also refuses the patch itself: VirtualProtect(Ex) answers 5 and even
+   WriteProcessMemory(GetCurrentProcess()) answers 998 on a .text page, so the client's code cannot
+   be written from inside at all. The gui can, from outside, so a hook asks it over the pipe, gets
+   the bytes back acked, and the client never touches its own text. */
+
+static int remote_patch(void *at, const unsigned char *bytes, int length)
+{
+    /* Only a file request, no round trip: waiting for the gui blocks the client's own vm thread,
+       and the gui applies the bytes from outside within a fraction of a second. A patch that
+       lands late is harmless - the prologue is simply still the original until then. */
+    unsigned char *client = module_base(L"RobloxPlayerBeta.exe");
+    char path[MAX_PATH];
+    char line[160];
+    char *o;
+    HANDLE file;
+    DWORD wrote;
+    long rva;
+    int i;
+
+    if (!client) return 0;
+    rva = (long)((unsigned char *)at - client);
+    if (length > 24) return 0;
+    workspace(path);
+    {
+        char tail[32];
+        wsprintfA(tail, "\\patch-%u.txt", GetCurrentProcessId());
+        lstrcatA(path, tail);
+    }
+    o = line;
+    {
+        char head[24];
+        wsprintfA(head, "%lx ", rva);
+        for (char *h = head; *h; h++) *o++ = *h;
+    }
+    for (i = 0; i < length; i++) {
+        const char *digits = "0123456789abcdef";
+        *o++ = digits[bytes[i] >> 4];
+        *o++ = digits[bytes[i] & 15];
+    }
+    *o++ = 10;
+    *o = 0;
+    file = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) { put("rp no file"); return 0; }
+    WriteFile(file, line, (DWORD)lstrlenA(line), &wrote, 0);
+    CloseHandle(file);
+    return 1;
+}
+
 /* Arbitrary Code Guard refuses the Win32 call on image pages, so the NT form is used first: it
    is the same operation with the policy check done by the memory manager instead of the loader. */
 static int protect_code(void *at, size_t size, DWORD protect, DWORD *old)
 {
-    typedef long (NTAPI *nt_protect_t)(void *, void **, ULONG_PTR *, ULONG *, ULONG);
+    typedef long (NTAPI *nt_protect_t)(void *, void **, ULONG_PTR *, ULONG, ULONG *);
     nt_protect_t nt;
     void *base = at;
     ULONG_PTR span = size;
@@ -2462,7 +2563,7 @@ static int protect_code(void *at, size_t size, DWORD protect, DWORD *old)
     long status;
     nt = (nt_protect_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtProtectVirtualMemory");
     if (nt) {
-        status = nt(GetCurrentProcess(), &base, &span, &protect, &was);
+        status = nt(GetCurrentProcess(), &base, &span, protect, &was);
         if (status == 0) { if (old) *old = was; return 1; }
     }
     return VirtualProtect(at, size, protect, old) ? 1 : 0;
@@ -2544,8 +2645,8 @@ static int install_hook(void *target)
     g_replay[displaced] = 0x48;                          /* mov rax, at+displaced */
     g_replay[displaced + 1] = 0xB8;
     *(unsigned long long *)&g_replay[displaced + 2] = (unsigned long long)(at + displaced);
-    g_replay[displaced + 10] = 0xFF;                     /* jmp rax */
-    g_replay[displaced + 11] = 0xE0;
+    g_replay[displaced + 10] = 0x50;                     /* push rax */
+    g_replay[displaced + 11] = 0xC3;                     /* ret, back into the function */
 
     if (HOST_ONLY(g_noThunk)) {                                      /* bisect: replay only */
         n = 0;
@@ -2553,8 +2654,8 @@ static int install_hook(void *target)
         stub[n++] = 0xB8;
         *(unsigned long long *)&stub[n] = (unsigned long long)g_replay;
         n += 8;
-        stub[n++] = 0xFF;                                /* jmp rax */
-        stub[n++] = 0xE0;
+        stub[n++] = 0x50;                                /* push rax */
+        stub[n++] = 0xC3;                                /* ret */
         goto patch_target;
     }
     stub[n++] = 0x50;                                     /* push rax */
@@ -2565,12 +2666,16 @@ static int install_hook(void *target)
     /* The callee owns the 32 bytes below rsp as shadow space. Without reserving them the thunk
        spills straight over the five saved registers and the pops restore garbage, so they have
        to be subtracted too (40 + 32 also keeps the call 16-byte aligned). */
-    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xEC; stub[n++] = 0x20;  /* sub rsp, 0x20 */
+    /* The patch is an absolute jmp, not a call, so no return address sits on the stack: entry rsp
+       is 16-aligned and has to be re-aligned for the call. 40 pushed + 8 pad + 32 shadow = 0x28,
+       which leaves rsp 16-aligned before the call and 8-aligned inside the thunk, as the abi
+       expects. Without the pad every movaps spill in the thunk faults. */
+    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xEC; stub[n++] = 0x28;  /* sub rsp, 0x28 */
     stub[n++] = 0x48; stub[n++] = 0xB8;                   /* mov rax, hook_thunk */
     *(unsigned long long *)&stub[n] = (unsigned long long)hook_thunk;
     n += 8;
     stub[n++] = 0xFF; stub[n++] = 0xD0;                   /* call rax */
-    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xC4; stub[n++] = 0x20;  /* add rsp, 0x20 */
+    stub[n++] = 0x48; stub[n++] = 0x83; stub[n++] = 0xC4; stub[n++] = 0x28;  /* add rsp, 0x28 */
     stub[n++] = 0x41; stub[n++] = 0x59;                   /* pop r9  */
     stub[n++] = 0x41; stub[n++] = 0x58;                   /* pop r8  */
     stub[n++] = 0x5A;                                     /* pop rdx */
@@ -2580,8 +2685,8 @@ static int install_hook(void *target)
     stub[n++] = 0xB8;
     *(unsigned long long *)&stub[n] = (unsigned long long)g_replay;
     n += 8;
-    stub[n++] = 0xFF;                                    /* jmp rax */
-    stub[n++] = 0xE0;
+    stub[n++] = 0x50;                                    /* push rax */
+    stub[n++] = 0xC3;                                    /* ret: not cfg-checked, jmp rax is */
 patch_target:
     FlushInstructionCache(GetCurrentProcess(), g_trampoline, HOOK_SLOTS * HOOK_SLOT);
 
@@ -2590,21 +2695,39 @@ patch_target:
            displaced, (void *)stub, (void *)g_replay, (long long)(stub - (at + 5)));
 #endif
     delta = 0;
-    SetLastError(0);
-    if (!protect_code(at, displaced + 8, PAGE_EXECUTE_READWRITE, &old)) {
-        char line[64];
-        wsprintfA(line, "ih no patch e%lu", GetLastError());
-        put(line);
-        return 0;
+    {
+        unsigned char patch[16];
+        DWORD was = 0;
+        MEMORY_BASIC_INFORMATION mbi;
+        char dbg[96];
+        int how = 0;
+        DWORD nowProt = 0;
+        if (VirtualQuery(at, &mbi, sizeof(mbi))) nowProt = (DWORD)mbi.Protect;
+
+        patch[0] = 0x48;                                 /* mov rax, stub */
+        patch[1] = 0xB8;
+        *(unsigned long long *)&patch[2] = (unsigned long long)stub;
+        patch[10] = 0xFF;                                /* jmp rax */
+        patch[11] = 0xE0;
+        for (i = 12; i < displaced; i++) patch[i] = 0x90;
+
+        /* Only PAGE_EXECUTE_WRITECOPY is granted under code integrity, and the page has to be put
+           back to what it was afterwards or the client later executes a copy-on-write page it does
+           not expect. When even that is refused the request goes to the gui. */
+        if (protect_code(at, displaced + 8, PAGE_EXECUTE_WRITECOPY, &was)) {
+            memcpy(at, patch, displaced);
+            protect_code(at, displaced + 8, was ? was : PAGE_EXECUTE_READ, 0);
+            how = 1;
+        }
+        else if (remote_patch(at, patch, displaced)) {
+            how = 3;
+            was = 0;
+        }
+        wsprintfA(dbg, "ih patched %p prot %lx how %d was %lx", at, nowProt, how, was);
+        put(dbg);
+        if (!how) { put("ih no patch"); return 0; }
     }
-    at[0] = 0x48;                                        /* mov rax, stub */
-    at[1] = 0xB8;
-    *(unsigned long long *)&at[2] = (unsigned long long)stub;
-    at[10] = 0xFF;                                       /* jmp rax */
-    at[11] = 0xE0;
-    for (i = 12; i < displaced; i++) at[i] = 0x90;
-    protect_code(at, displaced + 8, old, 0);
-    FlushInstructionCache(GetCurrentProcess(), at, displaced + 8);
+    FlushInstructionCache(GetCurrentProcess(), at, displaced);
     g_hooked = 1;
     return 1;
 }
@@ -2754,8 +2877,9 @@ __declspec(dllexport) DWORD WINAPI lyphen_entry(void *parameter)
     LYPHEN_TRY {
         code = run_entry();
     }
-    LYPHEN_EXCEPT(GetExceptionCode() == 0xE06D7363u ? EXCEPTION_CONTINUE_SEARCH
-                                                    : EXCEPTION_EXECUTE_HANDLER) {
+    /* take the C++ throw as well: Luau only throws from api_check, so it means our call shape was
+       wrong. Logging it and dying are very different debugging experiences. */
+    LYPHEN_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
         char line[160];
         EXCEPTION_POINTERS *info = GetExceptionInformation();
         wsprintfA(line, "fail entry %s code %lx at %p", g_stage, GetExceptionCode(),
@@ -2774,7 +2898,25 @@ static DWORD run_entry(void)
     bus_header *header;
 
     put("m1 enter");
+    {
+        char stopPath[MAX_PATH];
+        workspace(stopPath);
+        lstrcatA(stopPath, "\\stop.txt");
+        {
+            HANDLE h = CreateFileA(stopPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0,
+                                   OPEN_EXISTING, 0, 0);
+            char num[8] = { 0 };
+            DWORD got = 0;
+            if (h != INVALID_HANDLE_VALUE) {
+                ReadFile(h, num, sizeof(num) - 1, &got, 0);
+                CloseHandle(h);
+                for (DWORD k = 0; k < got && num[k] >= '0' && num[k] <= '9'; k++)
+                    g_stopAt = g_stopAt * 10 + (num[k] - '0');
+            }
+        }
+    }
     if (g_started) return 0;
+    if (g_stopAt == 55) { put("early return"); return 0; }
     g_started = 1;
     put(register_unwind() ? "m2 unwind ok" : "m2 no unwind");
 #ifndef LYPHEN_HOST
@@ -2829,11 +2971,13 @@ static DWORD run_entry(void)
     stage("state");
     g.state = state_from_file();          /* the gui leaves it here; empty file = 0 */
     if (g.state) put("sfile");
+    stage("s1");
     /* The hook supplies the state, so the heap crawl is skipped here: it is the one step that
        reliably kills the client, and nothing needs its answer until the fallback path. */
     {
         g_apiSource = read_chunk("api.luau");
         g_runnerSource = read_chunk("runner.luau");
+        stage("s2");
         if (!g_runnerSource) fail("compile", "runner.luau missing from %LOCALAPPDATA%\\Lyphen");
         /* gettop is the trigger of choice: it is called constantly, it never throws, and it has no
            frame of its own, so replaying its prologue cannot disturb error handling. The trampoline
@@ -2850,9 +2994,12 @@ static DWORD run_entry(void)
         }
     }
 
+    stage("s3");
     put("e2 block done");
     emit("i", 0, "core up");
     put("e3 emitted");
+    stage("s4");
+    put("entry ret");
     /* no loop here: the caller's thread is given straight back. Everything after this runs on
        the runner's Heartbeat (bridge pump), so we add no thread to the client. */
     return 0;

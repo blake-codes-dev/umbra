@@ -1,8 +1,8 @@
 # stale agent
 
-written 2026-11-25T08:53:46Z by the watchdog
+written 2026-11-25T11:34:12Z by the watchdog
 
-- **container** silent for 15 min, last note: next_scan page-step bug fixed, calibration ok, 0.1.9 shipped
+- **windows** silent for 15 min, last note: "dump was the wrong build; acg blocks exec alloc"
 
 If this is the Windows side: it may be building, or it may have died mid-step.
 Resume from the last note above, or re-issue the step. Its work is on the shared

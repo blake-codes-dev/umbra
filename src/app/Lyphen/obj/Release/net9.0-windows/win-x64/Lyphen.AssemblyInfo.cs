@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Lyphen")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("0.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+01a685d669dac770c643cd534ab9f19bd6b0c1bc")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+1317ce07c85d6cf515afae23e5d7d5219dd46d0c")]
 [assembly: System.Reflection.AssemblyProductAttribute("Lyphen")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Lyphen")]
 [assembly: System.Reflection.AssemblyVersionAttribute("0.1.0.0")]

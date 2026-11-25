@@ -8,11 +8,11 @@
   "beats": 8
  },
  "windows": {
-  "at": 1795593968.4112167,
-  "iso": "2026-11-25T08:06:08Z",
-  "note": "\"paging model measured, state scan hardened\"",
+  "at": 1795605523.3253636,
+  "iso": "2026-11-25T11:18:43Z",
+  "note": "\"dump was the wrong build; acg blocks exec alloc\"",
   "state": "working",
   "alerted": true,
-  "beats": 5
+  "beats": 6
  }
 }

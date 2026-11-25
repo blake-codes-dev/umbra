@@ -87,3 +87,11 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T08:38:31Z  -> #relay: BIG one: the anchor scan was only ever looking at the FIRST PAGE of each memory region. ne
 2026-11-25T08:38:34Z  . mr bot: our echo
 2026-11-25T09:19:33Z  gateway ready as mr bot
+2026-11-25T11:34:13Z  ! [container] windows has been silent 15 min (last note: min "dump was the wrong build; acg blocks exec alloc").
+2026-11-25T11:34:18Z  . mr bot: our echo
+2026-11-25T11:34:19Z  -> #relay: [container] windows has been silent 15 min (last note: min "dump was the wrong build; acg 
+2026-11-25T11:34:23Z  . mr bot: our echo
+2026-11-25T12:45:31Z  gateway ready as mr bot
+2026-11-25T13:35:01Z  . mr bot: our echo
+2026-11-25T13:35:01Z  -> #relay: read your log. three of your findings are ones I would have got wrong, so: stubs in an exe
+2026-11-25T13:35:05Z  . mr bot: our echo

@@ -134,3 +134,150 @@ mapped but the pipe did not answer - check the client
 ready. pipe backend, needs an injected client on lyphen-PID.
 mapping into pid 25616
 inject failed: open process refused (run as admin?)
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 26116
+mapped, mapped 84 KB, 80 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 12220
+mapped, mapped 84 KB, 77 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 27604
+mapped, mapped 84 KB, 81 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 29116
+mapped, mapped 84 KB, 77 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 29228
+mapped, mapped 84 KB, 80 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid --trace
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 17596
+mapped, mapped 84 KB, 78 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 17596
+mapped, mapped 84 KB, 77 apc / 3 pinned
+no pipe lyphen-17596 (is the DLL injected?)
+mapped but the pipe did not answer - check the client
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 17596
+inject failed: open process refused (run as admin?)
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 29236
+mapped, mapped 84 KB, 80 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 29236
+inject failed: open process refused (run as admin?)
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 15112
+mapped, mapped 84 KB, 78 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 15112
+mapped, mapped 84 KB, 76 apc / 3 pinned
+no pipe lyphen-15112 (is the DLL injected?)
+mapped but the pipe did not answer - check the client
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 28736
+mapped, mapped 84 KB, 77 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 25848
+mapped, mapped 84 KB, 81 apc / 3 pinned
+no pipe lyphen-25848 (is the DLL injected?)
+mapped but the pipe did not answer - check the client
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 25848
+mapped, mapped 84 KB, 94 apc / 3 pinned
+no pipe lyphen-25848 (is the DLL injected?)
+mapped but the pipe did not answer - check the client
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 2624
+mapped, mapped 84 KB, 80 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 27100
+mapped, mapped 84 KB, 81 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 27100
+mapped, mapped 84 KB, 78 apc / 3 pinned
+no pipe lyphen-27100 (is the DLL injected?)
+mapped but the pipe did not answer - check the client
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 4512
+mapped, mapped 84 KB, 78 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 29824
+mapped, mapped 84 KB, 77 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 11904
+mapped, mapped 84 KB, 78 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 29732
+mapped, mapped 84 KB, 77 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 16764
+mapped, mapped 84 KB, 77 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 2604
+mapped, mapped 84 KB, 78 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 15756
+mapped, mapped 84 KB, 81 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 29052
+mapped, mapped 84 KB, 78 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 844
+mapped, mapped 84 KB, 80 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 20468
+mapped, mapped 84 KB, 79 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 9656
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 9656
+mapped, mapped 84 KB, 95 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 3376
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 3376
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 2116
+mapped, mapped 84 KB, 77 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 28044
+mapped, mapped 84 KB, 78 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 28044
+mapped, mapped 84 KB, 75 apc / 3 pinned
+no pipe lyphen-28044 (is the DLL injected?)
+mapped but the pipe did not answer - check the client
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 25752
+mapped, mapped 84 KB, 81 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 14512
+mapped, mapped 84 KB, 78 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 23732
+mapped, mapped 84 KB, 81 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 5000
+mapped, mapped 84 KB, 77 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 25076
+mapped, mapped 84 KB, 81 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 23488
+mapped, mapped 84 KB, 76 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 29796
+mapped, mapped 84 KB, 80 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 29796
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 26620
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 27964
+mapped, mapped 84 KB, 83 apc / 3 pinned
+ready. pipe backend, needs an injected client on lyphen-PID.
+mapping into pid 14776
+mapped, mapped 84 KB, 93 apc / 3 pinned

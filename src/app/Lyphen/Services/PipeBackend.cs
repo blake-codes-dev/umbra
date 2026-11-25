@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -20,6 +21,8 @@ namespace Lyphen.Services;
 ///   {"op":"fail","id":7,"text":"..."}       script raised
 ///   {"op":"ready","pid":1234,"build":"2.748.1526.0"}     handshake answer, runner is live
 ///   {"op":"state","state":"attached"|"detached","modules":0,"threads":0,"windows":0,"kb":8}
+///   {"op":"patch","rva":1511424,"bytes":"48b8..."} sent by the core, acked with
+///   {"op":"patched","rva":1511424,"ok":true}
 ///   {"op":"bye"}
 ///
 /// The socket is the source of truth for state: EOF means detached, never the UI.
@@ -119,6 +122,7 @@ public sealed class PipeBackend : IBackend, IDisposable
         }
 
         var op = root.TryGetProperty("op", out var opValue) ? opValue.GetString() : null;
+        Console.WriteLine($"  <core> {op}");
         switch (op)
         {
             case "log":
@@ -149,6 +153,46 @@ public sealed class PipeBackend : IBackend, IDisposable
                 Output?.Invoke(new($"footprint: +{modules} modules, +{threads} threads, " +
                                    $"+{windows} windows, {kb} KB private", false));
                 break;
+            case "patch":
+                {
+                    /* acg blocks every in-process write to the client's code, so the core asks us:
+                       we write the stub patch from outside and answer with the rva we did */
+                    var rva = root.TryGetProperty("rva", out var rv) ? rv.GetInt64() : 0;
+                    var hex = root.TryGetProperty("bytes", out var bx) ? bx.GetString() : null;
+                    var ok = false;
+                    var why = "no bytes";
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(hex) && hex.Length % 2 == 0)
+                        {
+                            using var proc = System.Diagnostics.Process.GetProcessById(Pid);
+                            /* the page is executable-read and the write is done by the kernel, so
+                               it has to be made writable first; page rights need a full handle,
+                               the default one only carries what the app asked for */
+                            var handle = Injector.OpenProcessFull(Pid);
+                            try
+                            {
+                            var kernel = Injector.PeImage.RemoteModulePublic(handle, "RobloxPlayerBeta.exe");
+                            var at = kernel + (int)rva;
+                            var data = Convert.FromHexString(hex);
+                            var was = 0u;
+                            var prot = Injector.VirtualProtectEx(handle, at, (UIntPtr)data.Length,
+                                Injector.PageExecuteReadWrite, out was);
+                            if (!prot) why = "protect " + Marshal.GetLastWin32Error();
+                            if (kernel != IntPtr.Zero && prot &&
+                                Injector.WriteProcessMemory(handle, at, data, (UIntPtr)data.Length, out var wrote) &&
+                                wrote == (UIntPtr)data.Length) ok = true;
+                            else if (ok == false && why == "no bytes") why = "write " + Marshal.GetLastWin32Error();
+                            if (prot) Injector.VirtualProtectEx(handle, at, (UIntPtr)data.Length, was, out _);
+                            }
+                            finally { if (handle != IntPtr.Zero) Injector.CloseHandle(handle); }
+                        }
+                    }
+                    catch (Exception ex) { why = ex.GetType().Name; }
+                    Console.WriteLine($"  patch {rva:x} -> {ok} {why}");
+                    _ = Send(new { op = "patched", rva, ok });
+                    break;
+                }
             case "bye":
                 Output?.Invoke(new("host said bye"));
                 break;

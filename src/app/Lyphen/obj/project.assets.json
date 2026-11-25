@@ -147,24 +147,31 @@
     ]
   },
   "packageFolders": {
-    "/config/.nuget/packages/": {}
+    "C:\\Users\\blake\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "0.1.0",
     "restore": {
-      "projectUniqueName": "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Lyphen/Lyphen.csproj",
+      "projectUniqueName": "C:\\Users\\blake\\deepai-data-1\\.deepai-code\\scratch\\2026-11-24-try-to-go-into-github-5017c798\\umbra\\src\\app\\Lyphen\\Lyphen.csproj",
       "projectName": "Lyphen",
-      "projectPath": "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Lyphen/Lyphen.csproj",
-      "packagesPath": "/config/.nuget/packages/",
-      "outputPath": "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/src/app/Lyphen/obj/",
+      "projectPath": "C:\\Users\\blake\\deepai-data-1\\.deepai-code\\scratch\\2026-11-24-try-to-go-into-github-5017c798\\umbra\\src\\app\\Lyphen\\Lyphen.csproj",
+      "packagesPath": "C:\\Users\\blake\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\blake\\deepai-data-1\\.deepai-code\\scratch\\2026-11-24-try-to-go-into-github-5017c798\\umbra\\src\\app\\Lyphen\\obj\\",
       "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
       "configFilePaths": [
-        "/config/.nuget/NuGet/NuGet.Config"
+        "C:\\Users\\blake\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
         "net9.0-windows"
       ],
       "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -183,7 +190,7 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "9.0.300"
+      "SdkAnalysisLevel": "9.0.200"
     },
     "frameworks": {
       "net9.0-windows7.0": {
@@ -207,12 +214,16 @@
         "warn": true,
         "downloadDependencies": [
           {
-            "name": "Microsoft.NETCore.App.Host.win-x64",
-            "version": "[9.0.23, 9.0.23]"
+            "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
+            "version": "[9.0.2, 9.0.2]"
           },
           {
-            "name": "Microsoft.WindowsDesktop.App.Ref",
-            "version": "[9.0.23, 9.0.23]"
+            "name": "Microsoft.NETCore.App.Runtime.win-x64",
+            "version": "[9.0.2, 9.0.2]"
+          },
+          {
+            "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+            "version": "[9.0.2, 9.0.2]"
           }
         ],
         "frameworkReferences": {
@@ -223,7 +234,7 @@
             "privateAssets": "none"
           }
         },
-        "runtimeIdentifierGraphPath": "/tmp/dotnet/sdk/9.0.321/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.200/PortableRuntimeIdentifierGraph.json"
       }
     },
     "runtimes": {

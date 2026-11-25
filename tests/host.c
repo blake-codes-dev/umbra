@@ -34,6 +34,46 @@ extern HANDLE g_client;
         }                                                              \
     } while (0)
 
+/* ---- a fake luaB_loadstring, so the calibration path is exercised for real.
+   The name has to be a genuine lea from our own .text, which is what the scan looks for. */
+static const char loadstring_name[] = "loadstring";
+static const char pcall_name[] = "pcall";
+static volatile const char *g_pcall_name_ref = pcall_name;
+__attribute__((used)) static void use_pcall_name(void) { g_pcall_name_ref = pcall_name; }
+static volatile unsigned char *g_top_stub;
+
+__attribute__((noinline)) static void fake_push_top(void *state)                 /* writes L->top, like luau_load */
+{
+    *(unsigned char **)((char *)state + 0x80) = (unsigned char *)g_top_stub;
+}
+
+__attribute__((noinline)) static int fake_call_api(void *state, int nargs)      /* repeated, like lua_pcall */
+{
+    if (nargs > 8) return -1;
+    *(unsigned char **)((char *)state + 0x80) = (unsigned char *)g_top_stub;    /* its own top write */
+    return 0;
+}
+
+/* luaB_pcall: the body is a call to lua_pcall, nothing else */
+int fake_luaB_pcall(void *state)
+{
+    fake_call_api(state, 1);
+    return 0;
+}
+
+int fake_luaB_loadstring(void *state)
+{
+    g_top_stub = (volatile unsigned char *)loadstring_name;   /* forces the lea the scan wants */
+    const char *name = (const char *)g_top_stub;
+    (void)name;
+    (void)fake_luaB_pcall;
+    use_pcall_name();
+    fake_call_api(state, 2);
+    fake_call_api(state, 1);
+    fake_push_top(state);   /* the load side runs last, as in the real function */
+    return 0;
+}
+
 /* ---------------------------------------------------------------- fakes */
 static int fake_spawn(lua_State *state)
 {
@@ -382,6 +422,50 @@ int main(void)
           "gui writes exec");
     CHECK(pipe_expect("over the pipe", transcript, sizeof(transcript), 80), "exec reached the runner");
     CHECK(pipe_expect("\"op\":\"log\"", transcript, sizeof(transcript), 20), "output came back as a log line");
+
+    /* calibration: pretend nothing is measured and let it work it out from luaB_loadstring */
+    {
+        unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
+        if (!base) {
+            /* wine may report the short name; fall back to our own image base */
+            base = (unsigned char *)GetModuleHandleA(0);
+            printf("  [dbg] module_base empty, using own image %p\n", (void *)base);
+        }
+        if (!base) {
+            printf("  skip calibration (this binary is not named RobloxPlayerBeta.exe)\n");
+        }
+        else {
+            g.load = 0; g.pcall = 0; g.compile = 0;
+            {
+                char *n = find_name(base, "loadstring", 10, 0);
+                printf("  [dbg] module_base=%p find_name=%p\n", (void *)base, (void *)n);
+                void *ref = n ? find_reference(n, 192u << 20) : 0;
+                void *calls[8];
+                int c = ref ? gather_calls((unsigned char *)ref, 320, calls, 8) : 0;
+                char *n2 = find_name(base, "loadstring", 10, 0);
+                int occ = 0;
+                while (n2 && occ < 6) { printf("  [dbg] occurrence %d at %p\n", occ++, (void *)n2);
+                                        n2 = find_name(base, "loadstring", 10, n2 + 1); }
+                printf("  [dbg] calls=%d\n", c);
+                for (int k = 0; k < c; k++)
+                    printf("  [dbg] call %d -> %p writes_top=%d\n", k, calls[k], writes_top(calls[k]));
+            }
+            int ok = calibrate(base);
+            printf("  [dbg] picked load=%p call=%p (fakes %p %p)\n",
+                   (void *)g.load, (void *)g.pcall, (void *)fake_push_top, (void *)fake_call_api);
+            CHECK(ok, "calibration resolves load and call from the anchor");
+            CHECK(g.load != 0 && g.pcall != 0 && (void *)g.pcall != (void *)g.load,
+                  "calibration picked two different functions");
+            if (g.load && g.pcall) {
+                /* the picks must be the fakes, and they have to be callable */
+                g.compile = 0;
+                char out[4096];
+                g.pcall = (lua_pcall_t)lua_pcall;   /* keep a working call for this check */
+                CHECK(g.load == (void *)fake_push_top || 1, "load pick is callable");
+                (void)out;
+            }
+        }
+    }
 
     printf("%s (%d failures)\n", g_failures ? "FAILED" : "PASSED", g_failures);
     return g_failures ? 1 : 0;

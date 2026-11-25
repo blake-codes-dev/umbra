@@ -69,6 +69,23 @@ Function addresses are resolved as `module base + rva` from `tools/gen_patterns.
 (`src/native/patterns.h`), with the recorded prologue as a scan fallback for anything not yet
 measured, so an unmeasured function still resolves if the prologue matches.
 
+## Finding the Luau entry points
+
+The shipped `.text` is packed (Byfron), so nothing can be read off the file: the byte histogram
+is almost uniform and no prologue signature exists until the client unpacks itself. Strings in
+`.rdata` are not packed, so `resolve()` self-calibrates in memory instead:
+
+1. find the literal name (`loadstring`, `pcall`), exact and NUL-terminated
+2. find the code that references it, either `lea r64,[rip+d]` or `mov r64,[rip+d]` of a slot
+3. take the call targets in that function; a real one is recognised by storing `L->top`
+   (`mov [reg+0x80], reg` with a disp32) and returning soon after
+4. `luau_load` is the last such callee in `luaB_loadstring` (the first is the compiler),
+   `lua_pcall` is the one in `luaB_pcall`
+
+Every pick is reported as a `calibrated load=... call=...` line, so a live run converts into
+fixed RVAs in `patterns.json` and the guessing stops being load-bearing. RVAs are still tried
+first when present.
+
 ## Rules that matter
 
 - **Every risky read is wrapped.** The core uses `__try/__except` around every pointer deref;

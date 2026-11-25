@@ -103,6 +103,7 @@ static const char *find_text(const char *haystack, const char *needle);
 static void push_bus(lua_State *state);
 static void push_bridge(lua_State *state, const char *apiSource);
 static int resolve(void);
+static int calibrate(unsigned char *base);
 static int open_pipe(void);
 static char g_stage[32] = "start";
 
@@ -292,7 +293,11 @@ static int load_source(lua_State *state, const char *chunkname, const char *sour
     size_t size = 0;
     char *bytecode;
     int status;
-    if (!g.compile) return -1;
+    if (!g.compile) {
+        /* luau_load without a compiler: it re-parses source when the buffer is not bytecode,
+           which is what costs a bytecode cache in production and nothing today */
+        return g.load(state, chunkname, source, lstrlenA(source), 0);
+    }
     bytecode = g.compile(source, lstrlenA(source), 0, &size);
     if (!bytecode || size == 0) return -1;
     status = g.load(state, chunkname, bytecode, size, 0);
@@ -945,6 +950,13 @@ static int resolve(void)
     RESOLVE(tolstring, lua_tolstring_t, LUA_TOLSTRING, "lua_tolstring");
     RESOLVE(tonumber, lua_tonumber_t, LUA_TONUMBER, "lua_tonumber");
     RESOLVE(gettop, lua_gettop_t, LUA_GETTOP, "lua_gettop");
+
+    /* nothing measured yet (the shipped text is packed, so these are normally all zero):
+       calibrate in memory and keep whatever worked */
+    if (!g.load || !g.pcall) {
+        if (!calibrate(base)) emit("e", 0, "calibration failed, the executor stays dumb");
+        g.compile = 0;   /* discovered lazily below */
+    }
     ok = g.load && g.pcall && g.pushcclosure && g.createtable && g.setfield && g.rawseti;
     return ok;
 }
@@ -970,6 +982,220 @@ static char *read_chunk(const char *name)
     if (buffer && ReadFile(file, buffer, size, &read, 0)) buffer[read] = 0;
     CloseHandle(file);
     return buffer;
+}
+
+
+/* ------------------------------------------------------------------ self-calibration
+ * The shipped .text is packed (Byfron), so nothing can be read off the file: every prologue
+ * signature only exists once the client has unpacked itself. Strings in .rdata are not packed
+ * though, so we find a known name, then find the code that references it in memory, then take
+ * the call targets inside that function. Whatever we settle on is reported so a live run can
+ * be turned into fixed RVAs afterwards.
+ */
+static int in_range(void *at, unsigned char *lo, unsigned char *hi)
+{
+    return (unsigned char *)at >= lo && (unsigned char *)at < hi;
+}
+
+/* is the address inside any committed executable region? */
+static void *exec_target(unsigned long long address)
+{
+    MEMORY_BASIC_INFORMATION region;
+    void *at = (void *)address;
+    if (!VirtualQuery(at, &region, sizeof(region))) return 0;
+    if (region.State != MEM_COMMIT) return 0;
+    if (region.Protect != PAGE_EXECUTE_READ && region.Protect != PAGE_EXECUTE_READWRITE &&
+        region.Protect != PAGE_EXECUTE_WRITECOPY && region.Protect != PAGE_EXECUTE)
+        return 0;
+    return at;
+}
+
+/* printable, NUL-terminated, plain ASCII: .rdata strings are readable even packed */
+static int is_name(void *where, size_t min, size_t max)
+{
+    char *at = (char *)where;
+    char buffer[64];
+    size_t i;
+    if (!safe_read(at, buffer, min)) return 0;
+    for (i = 0; i < min - 1; i++)
+        if (buffer[i] < 0x20 || buffer[i] > 0x7E) return 0;
+    for (; i < max - 1; i++) {
+        if (!safe_read(at + i, buffer + i, 1)) return 0;
+        if (buffer[i] == 0) return 1;
+        if (buffer[i] < 0x20 || buffer[i] > 0x7E) return 0;
+    }
+    return 0;
+}
+
+/* find "name" in the module's read-only data */
+static char *find_name(unsigned char *base, const char *name, size_t size, char *from)
+{
+    IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
+    IMAGE_NT_HEADERS *nt;
+    IMAGE_SECTION_HEADER *section;
+    int i;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
+    nt = (IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
+    section = IMAGE_FIRST_SECTION(nt);
+    for (i = 0; i < nt->FileHeader.NumberOfSections; i++, section++) {
+        unsigned char *at, *end;
+        if (!(section->Characteristics & IMAGE_SCN_MEM_READ)) continue;
+        if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) continue;   /* packed */
+        at = base + section->VirtualAddress;
+        end = at + section->Misc.VirtualSize - size;
+        for (; at < end; at++) {
+            char window[32];
+            if (from && at < (unsigned char *)from) continue;
+            if (!safe_read(at, window, size)) continue;
+            if (!memcmp(window, name, size) && at[size] == 0 && is_name(at, size + 1, 32))
+                return (char *)at;
+        }
+    }
+    return 0;
+}
+
+/* rip-relative references to a fixed address, in executable memory only */
+static void *find_reference(void *needle, size_t limit)
+{
+    SYSTEM_INFO info;
+    unsigned char *cursor;
+    size_t seen = 0;
+    GetSystemInfo(&info);
+    cursor = (unsigned char *)info.lpMinimumApplicationAddress;
+    while (cursor < (unsigned char *)info.lpMaximumApplicationAddress && seen < limit) {
+        MEMORY_BASIC_INFORMATION region;
+        unsigned char *at, *end;
+        if (!VirtualQuery(cursor, &region, sizeof(region))) break;
+        cursor = (unsigned char *)region.BaseAddress + region.RegionSize;
+        if (region.State != MEM_COMMIT) continue;
+        if (region.Protect != PAGE_EXECUTE_READ && region.Protect != PAGE_EXECUTE_READWRITE &&
+            region.Protect != PAGE_EXECUTE_WRITECOPY && region.Protect != PAGE_EXECUTE)
+            continue;
+        at = (unsigned char *)region.BaseAddress;
+        end = at + region.RegionSize - 8;
+        seen += region.RegionSize;
+        for (; at < end; at++) {
+            unsigned char head[8];
+            long displacement;
+            unsigned char *target;
+            if (!safe_read(at, head, sizeof(head))) break;
+            if ((head[0] & 0xF8) != 0x48) continue;              /* REX.W */
+            /* lea r64,[rip+d] takes the address, mov r64,[rip+d] loads a slot holding it */
+            if (head[1] != 0x8D && head[1] != 0x8B) continue;
+            if ((head[2] & 0xC7) != 0x05) continue;              /* [rip + disp32] */
+            displacement = *(long *)&head[3];
+            target = (unsigned char *)at + 7 + displacement;
+            if (target == (unsigned char *)needle) return at;
+            if (head[1] == 0x8B) {
+                void *slot = 0;
+                if (safe_read(target, &slot, sizeof(slot)) && slot == needle) return at;
+            }
+        }
+    }
+    return 0;
+}
+
+/* call targets (E8 rel32) inside a window of a function */
+static int gather_calls(unsigned char *at, size_t window, void **out, int max)
+{
+    int found = 0;
+    size_t i;
+    for (i = 0; i < window && found < max; i++) {
+        unsigned char head[5];
+        long displacement;
+        if (!safe_read(at + i, head, sizeof(head))) return found;
+        if (head[0] != 0xE8) continue;
+        displacement = *(long *)&head[1];
+        if (exec_target((unsigned long long)(at + i + 5 + displacement)))
+            out[found++] = at + i + 5 + displacement;
+    }
+    return found;
+}
+
+/* luau_load and lua_pcall both store L->top: `mov [reg+0x80], reg` with a disp32. Requiring
+   the exact displacement and a nearby ret keeps ordinary prologues out of the shortlist. */
+static int writes_top(void *function)
+{
+    unsigned char code[112];
+    int i, ret = 0;
+    if (!safe_read(function, code, sizeof(code))) return 0;
+    for (i = 0; i < 100; i++) {
+        if (code[i] == 0xC3) { ret = 1; break; }
+        if (code[i] != 0x48 && code[i] != 0x4C && code[i] != 0x49) continue;
+        if (code[i + 1] != 0x89) continue;
+        /* modrm with mod=10 (disp32) and rm != 100/101 */
+        if ((code[i + 2] & 0xC0) != 0x80) continue;
+        if (*(int *)&code[i + 3] == 0x80) return 1;
+    }
+    return ret ? 0 : 0;
+}
+
+/* One anchor per entry point, because neither function is reachable from the other:
+     luau_load : luaB_loadstring compiles first and loads last, so take the *last* top-writing
+                 callee in it (an earlier one is the compiler).
+     lua_pcall : luaB_pcall calls it directly, and that is the whole body.
+   Both are guesses, so the pick is reported and can be frozen into patterns.json later. */
+static void *anchor_calls(unsigned char *base, const char *name, size_t nameLength, int pickLast)
+{
+    char *hit = 0;
+    void *chosen = 0;
+    if (!base) return 0;
+    hit = find_name(base, name, nameLength, 0);
+#ifdef UMBRA_HOST
+    { extern int printf(const char *, ...); printf("  [dbg] anchor %s base=%p hit=%p\n", name, (void *)base, (void *)hit); }
+#endif
+    while (hit && !chosen) {
+        void *ref = find_reference(hit, 192u << 20);
+        if (ref) {
+            void *calls[24];
+            int found = gather_calls((unsigned char *)ref, 320, calls, 24);
+            int i;
+            for (i = 0; i < found; i++) {
+                int at = pickLast ? found - 1 - i : i;
+                if (writes_top(calls[at])) { chosen = calls[at]; break; }
+            }
+        }
+        hit = find_name(base, name, nameLength, hit + 1);
+    }
+    return chosen;
+}
+
+static void report_pick(const char *label, void *at)
+{
+    char line[96];
+    char *o = line;
+    const char *a = "calibrated ";
+    static const char *digits = "0123456789abcdef";
+    int i;
+    while (*a) *o++ = *a++;
+    while (*label) *o++ = *label++;
+    *o++ = '=';
+    for (i = 0; i < 16; i++) *o++ = digits[((unsigned long long)at >> (60 - 4 * i)) & 0xF];
+    *o = 0;
+    emit("i", 0, line);
+    put(line);
+}
+
+static int calibrate(unsigned char *base)
+{
+    if (!base) base = module_base(L"RobloxPlayerBeta.exe");
+    if (!base) {
+        fail("scan", "no client module to calibrate against");
+        return 0;
+    }
+    g.load = (luau_load_t)anchor_calls(base, "loadstring", 10, 1);
+    g.pcall = (lua_pcall_t)anchor_calls(base, "pcall", 5, 0);
+    if (g.load) report_pick("load", (void *)g.load);
+    else fail("scan", "no load anchor found");
+    if (!g.pcall) {
+        /* the pcall entry often references it indirectly; fall back to the other top-writing
+           callee in loadstring, which is the compile/push side */
+        g.pcall = (lua_pcall_t)anchor_calls(base, "loadstring", 10, 0);
+        if ((void *)g.pcall == (void *)g.load) g.pcall = 0;
+    }
+    if (g.pcall) report_pick("call", (void *)g.pcall);
+    else fail("scan", "no call anchor found");
+    return g.load && g.pcall && g.pcall != (lua_pcall_t)g.load;
 }
 
 /* ------------------------------------------------------------------ pipe */

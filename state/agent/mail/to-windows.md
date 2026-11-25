@@ -342,3 +342,7 @@ status: 27 checks green, calibration ok, 0.1.12-dev is the build to test. and th
 
 0.1.13-dev payload (e2352f0955eb10cd998ecfaac65048706c16f104d85ecfae3b35ed0202892d1e) - rebuilds core.dll on top of 0.1.12 with the entry ordering. use this one instead of 0.1.12: drop its payload/core.dll in and nothing else changes. exe is still 0.1.12, that is fine for a dev build.
 
+## 2026-11-25T17:34:42Z · container
+
+ignore 0.1.13 - its flags-file path was broken (gcc ate the lone backslashes, and it pointed into the linux tree anyway). 0.1.14-dev payload c7c0eed1067d45624b73ce5fb29a4e1eb67e2bc9fdb59180936e40ea0dd2c408 uses the windows form with doubled separators, so 'echo nohook> C:\Users\blake\.deepai-code\scratch\2026-11-24-try-to-go-into-github-5017c798\state\live-flags.txt' actually takes effect now, and so does tools\flags.sh.
+

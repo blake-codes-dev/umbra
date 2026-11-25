@@ -30,8 +30,12 @@ if [ -f src/native/core.c ]; then
   if command -v x86_64-w64-mingw32-gcc >/dev/null; then
     # allow-multiple-definition: mingw's pesect.o and the CRT both define
     # _IsNonwritableInCurrentImage once the code touches image sections
+    # the checkout is seen two different ways: /config/... from here, C:\Users\blake\... from the
+    # client. the payload needs the windows form, and each separator has to survive the C lexer as
+    # a doubled backslash - without that gcc eats lone ones and the path arrives glued together.
+    FLAGS_PATH=$(cd .. && pwd | sed 's#^/config#C:\\\\Users\\\\blake#; s#/#\\\\#g')\\\\state\\\\live-flags.txt
     x86_64-w64-mingw32-gcc -shared -O2 -mno-stack-arg-probe -Wl,--allow-multiple-definition \
-      -DLYPHEN_FLAGS_FILE="\"$(cd .. && pwd)\\state\\live-flags.txt\"" src/native/core.c \
+      -DLYPHEN_FLAGS_FILE="\"$FLAGS_PATH\"" src/native/core.c \
       -o src/app/Lyphen/payload/core.dll -lwinhttp -luser32 || {
         echo "core.dll build failed"; exit 1; }
     echo "core.dll built with mingw (SEH guards are MSVC-only; build.bat on Windows is the real one)"

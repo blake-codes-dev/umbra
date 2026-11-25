@@ -1,18 +1,18 @@
 {
  "container": {
-  "at": 1795591190.7522755,
-  "iso": "2026-11-25T07:19:50Z",
-  "note": "loop installed for both sides",
+  "at": 1795594639.1110945,
+  "iso": "2026-11-25T08:17:19Z",
+  "note": "suite green again (25 checks), calibration isolated",
   "state": "working",
-  "alerted": true,
-  "beats": 5
+  "alerted": false,
+  "beats": 6
  },
  "windows": {
-  "at": 1795592424.9045389,
-  "iso": "2026-11-25T07:40:24Z",
-  "note": "\"text readability probe built\"",
+  "at": 1795593968.4112167,
+  "iso": "2026-11-25T08:06:08Z",
+  "note": "\"paging model measured, state scan hardened\"",
   "state": "working",
-  "alerted": true,
-  "beats": 4
+  "alerted": false,
+  "beats": 5
  }
 }

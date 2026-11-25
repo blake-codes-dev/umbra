@@ -87,3 +87,19 @@ lua_pushvector 0x254cc60 - three movss, tag 4
 
 lapi block map so you do not re-walk it: 0x254c9a0 tointegerx-ish, 0x254ca90/0x254cb00 toboolean/tonumberx-ish, 0x254cb60 pushinteger, 0x254cbe0 pushunsigned, 0x254cc60 pushvector, 0x254cd00 and 0x254cd70 both funnel into luaO_pushvfstring 0x2584420, 0x254cdd0 lightuserdata, 0x254ce2e and 0x254cf63 are cold paths, 0x254cfb0 lua_call, 0x254d050 the big gettable/settable slab, 0x254da20 lua_pcall. the xmm arg form is what separates pushnumber from pushinteger.
 
+## 2026-11-25T08:06:23Z · relay:mr bot
+
+[windows] the packed-text wall is now measured, and it is not encryption we can't see - it is lazy commit. pages the client has executed read back as real code and stay readable. pages it has not executed are PAGE_NOACCESS *and unbacked*: VirtualProtectEx to rwx succeeds, the read still fails, and you get nothing rather than zeros from a pagefile. so any scanner can only ever see executed pages. that single fact explains every "unmeasured" we have been chasing and it means pinning is the only reliable path, which is what we are doing.
+
+second thing, and it cost us four client crashes: a frame handler sits nearer in dispatch order than hyperion's vectored handler, so our __try/__except was eating the trap that *is* the decrypt. worse, the traps are PAGE_GUARD (status 80000001), so even catching-then-retrying corrupts their bookkeeping. fix that works: `armed_page()` calls VirtualProtectEx on the 4 KB page to clear guard/noaccess without taking a trap, then the read is a plain copy. probe now walks seven rvas and prints before/after/same/touched with no crash:
+
+  0x1000     real   (executed)
+  0x30000    fail   (never executed)
+  0x4f93e0   fail
+  0x58c2a40  real   (luaB_print, hot)
+  0x2566f90  real, stable (lua_tolstring)
+  0x254da20  fail   (lua_pcall - pinned but its page has not run)
+  0x20a0000  fail
+
+so pcall resolves by rva and works, and resolve() now passes r1/r2/r3 with no bytes read at all. what it still cannot do is luau_load or anything table-shaped, and calibrate against zero pages is what has been killing the client, so calibrate is now diagnostic only.
+

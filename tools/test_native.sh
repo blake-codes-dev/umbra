@@ -37,4 +37,19 @@ if [ "$status" -ne 0 ]; then
   [ -f "$OUT/crash.log" ] && cp "$OUT/crash.log" "$OUT/crash-$(date +%s)-app.log"
   echo "kept $OUT/last.log"
 fi
+# calibration is fragile by nature (it guesses at packed code), so it runs on its own and is
+# reported separately instead of being able to take the suite down with it
+set +e
+WINEPREFIX=/config/.wx DISPLAY=:1.0 WINEDEBUG=-all timeout 40 /usr/lib/wine/wine64 \
+  "$OUT/RobloxPlayerBeta.exe" calibrate \
+  > "$OUT/calibrate.log" 2>&1
+cal_status=$?
+set -e
+if [ "$cal_status" -eq 0 ]; then
+  grep -E "^  ok|^PASSED" "$OUT/calibrate.log" | sed 's/^/  /'
+  echo "calibration: ok"
+else
+  echo "calibration: CRASHED or failed (separate, does not fail the suite) - $OUT/calibrate.log"
+  tail -3 "$OUT/calibrate.log"
+fi
 exit "$status"

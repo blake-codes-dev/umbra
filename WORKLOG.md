@@ -70,3 +70,21 @@ One line per work block: what changed, what was measured, what is next.
   the client died mid-scan, so find_name/find_reference now copy one page and search in memory.
 - state: attach + hijack + pipe are solid, calibrate completes, but every anchor is still 0 and
   state_from_scriptcontext finds no state, so nothing Luau resolves yet.
+
+## 2026-11-25 03:10 - paging model measured
+The .text wall is not "encryption we cannot see", it is Hyperion committing pages lazily:
+- pages the client has executed read back as real code and stay readable
+- pages it has not executed are PAGE_NOACCESS *and unbacked*, so even after
+  VirtualProtectEx to rwx they read as failure (not zeros-from-a-pagefile)
+- guard pages trap even when the bytes are there, and a frame handler
+  (__except) sits nearer in dispatch than Hyperion's vectored handler, so our
+  own handler was eating the trap that produces the decrypt
+Fix: `armed_page()` calls VirtualProtectEx to clear guard/noaccess *without*
+taking a trap, then the read is a plain copy. The probe now finishes all seven
+rvas without killing the client: 0x1000, 0x58c2a40 (luaB_print) and 0x2566f90
+(lua_tolstring) read real bytes because those pages are hot; 0x30000, 0x4f93e0,
+0x254da20, 0x20a0000 fail because nothing has run them yet.
+Consequence: a byte scan can only ever see executed pages, so pinned rvas remain
+the right answer and calibrate is mostly a diagnostic.
+Also: state_from_scriptcontext now disarms each 4 KB page as it walks and bounds
+every deref through window_ok(), so the 1 GB heap walk no longer trips guards.

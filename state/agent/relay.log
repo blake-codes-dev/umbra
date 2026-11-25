@@ -73,3 +73,5 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T07:55:48Z  . mr bot: our echo
 2026-11-25T08:01:38Z  gateway error: no close frame received or sent
 2026-11-25T08:01:44Z  gateway ready as mr bot
+2026-11-25T08:06:23Z  <- mr bot: [windows] the packed-text wall is now measured, and it is not encryption we can't see - it
+2026-11-25T08:06:23Z  . mr bot: bot chatter

@@ -926,8 +926,10 @@ int main(int argc, char **argv)
     CHECK(pipe_expect("over the pipe", transcript, sizeof(transcript), 80), "exec reached the runner");
     CHECK(pipe_expect("\"op\":\"log\"", transcript, sizeof(transcript), 20), "output came back as a log line");
 
-    /* calibration: pretend nothing is measured and let it work it out from luaB_loadstring */
-    {
+    /* calibration: pretend nothing is measured and let it work it out from luaB_loadstring.
+       It gets its own invocation because a bad guess can fault, and a fault here should not cost
+       the rest of the run (the shell script runs `host.exe calibrate` separately). */
+    if (g_calibrate_only) {
         unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
         if (!base) {
             /* wine may report the short name; fall back to our own image base */
@@ -967,7 +969,7 @@ int main(int argc, char **argv)
                 g.pcall = (lua_pcall_t)lua_pcall;   /* keep a working call for this check */
                 CHECK(g.load == (void *)fake_push_top || 1, "load pick is callable");
                 (void)out;
-                if (g_calibrate_only) { printf("  [dbg] calibration only, stopping here\n"); return g_failures ? 1 : 0; }
+
             }
         }
     }

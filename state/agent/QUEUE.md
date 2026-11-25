@@ -42,4 +42,12 @@ Do not end a turn just because a sub-task finished; end interim messages with
         are shared, and only `src/game/` differs
       - do not start until the Roblox executor runs a chunk in a live client, so the shared
         pieces (bus, runner loop, updater, store) are proven first
-
+- [ ] **undetected first, same as Umbra** - no module, no thread, no window, nothing written to
+      the game folder; hand-rolled mapping only, and a signature report of our own so a ban wave
+      is diagnosed instead of guessed
+- [ ] **kernel driver, phase 2** - a signed driver to get around the anti-cheat's user-mode
+      surface: handle-based read/write, hide our pages from its scans, and hide the driver itself
+      (unloaded on exit, random name). Signing is the cost: EV cert + attestation, or a
+      vulnerable-driver (kdmapper) bootstrapping stage first, then our own cert when it earns it.
+      Keep the driver optional so the app still works user-mode only - it is an upgrade, not a
+      requirement, or the store has to explain a blue screen to a buyer

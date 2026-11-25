@@ -300,6 +300,17 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
             return;
         }
         push_bus(state);
+#ifdef UMBRA_HOST
+        {
+            extern int printf(const char *, ...);
+            extern const char *lua_typename(lua_State *, int);
+            extern int lua_type(lua_State *, int);
+            printf("  [dbg] top=%d t1=%s t2=%s t3=%s\n", g.gettop(state),
+                   lua_typename(state, lua_type(state, -3)),
+                   lua_typename(state, lua_type(state, -2)),
+                   lua_typename(state, lua_type(state, -1)));
+        }
+#endif
         if (g.pcall(state, 2, 0, 0) != 0)
             fail("resume", g.tolstring ? g.tolstring(state, -1, 0) : "runner did not start");
     }

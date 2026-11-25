@@ -217,6 +217,15 @@ int main(void)
     header()->version = BUS_VERSION;
 
     L = luaL_newstate();
+#ifdef UMBRA_HOST
+    {
+        /* does pcall work at all through the harness' own cast? */
+        g.pushcclosure = (lua_pushcclosure_t)lua_pushcclosurek;
+        g.pushcclosure(L, (void *)fake_wait, 0, 0, 0);
+        printf("  [dbg] direct pcall of a C closure -> %d (top %d)\n",
+               lua_pcall(L, 0, 0, 0), lua_gettop(L));
+    }
+#endif
     luaL_openlibs(L);
     g.state = L;
     install_fakes();
@@ -242,7 +251,13 @@ int main(void)
     CHECK(apiSource && runnerSource, "read api.luau and runner.luau");
     if (!apiSource || !runnerSource) return 1;
 
+#ifdef UMBRA_HOST
+    printf("  stack before: %d\n", lua_gettop(L));
+#endif
     spawn_runner(L, apiSource, runnerSource);
+#ifdef UMBRA_HOST
+    printf("  stack after: %d\n", lua_gettop(L));
+#endif
     pump_output(transcript, sizeof(transcript), 0);
     printf("  runner said: %s", transcript);
     CHECK(find_text(transcript, "runner up") != 0, "runner installed");

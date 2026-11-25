@@ -12,7 +12,12 @@ hooked call hands its caller a pointer where a result was expected. Use r11 inst
     push r11
     ret
 
-r11 is volatile, and no continuation depends on it.
+r11 is volatile, and no continuation depends on it. It is chosen deliberately: jumping back with a
+`jmp r11` is a CFG-checked indirect branch, which faults on a page with no valid CFG target, so the
+return has to go through the stack - and pushing an address needs one register. rax must stay
+untouched because it is a return value; r11 is the only scratch register that is never an argument
+in the ABI. A trampoline that hops back through the stack has to spend exactly one register, and
+this is the cheapest one to spend.
 
 ## 2. The stub must leave the stack aligned
 

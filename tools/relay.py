@@ -53,7 +53,8 @@ def cursor_path(side):
 
 def send(args):
     text = args.text if args.text else sys.stdin.read()
-    body = "[%s] %s" % (TAG[args.sender], text.strip())
+    text = text.strip()
+    body = text if text.startswith("[%s]" % TAG[args.sender]) else "[%s] %s" % (TAG[args.sender], text)
     result = call("/channels/%s/messages" % CHANNEL, {"content": body[:1900]})
     print("sent %s" % result.get("id", "?"))
     try:

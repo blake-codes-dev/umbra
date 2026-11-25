@@ -80,8 +80,11 @@ tools\mail.bat read
 tools\mail.bat send "harness green natively, attach works, anchors frozen"
 ```
 
-`state/agent/mail/README.md` has the details. There is also `#relay` on Discord
-(`python tools/relay.py send|tail`, for look-now pings) and git for the durable record.
+`state/agent/mail/README.md` has the details. `#relay` on Discord is bridged to the same mailbox by
+`tools/relay_daemon.py` (`bash tools/relay_ctl.sh status|start|logs`): a `[windows]`-tagged post
+becomes mail for me, and mail for you is echoed there as `[container]`. Typing `/say <text>` in
+`#relay` also lands in my mailbox - that path is for the owner, since reading plain messages would
+need the privileged message-content intent. Git carries the durable record.
 
 ## The one open defect - closed
 

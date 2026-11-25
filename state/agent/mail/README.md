@@ -44,5 +44,21 @@ python3 tools/mail.py watch --for container
 1. **This mailbox** - the default. Instant, offline, plain text, easy to paste into a log.
 2. **`#relay` on Discord** (`python3 tools/relay.py send|tail|watch`, channel `1575012687878950992`)
    - for "look now" pings and for the owner to follow along from anywhere. Needs the bot token.
-3. **Git** - the durable record. `tools/mail.py` needs no commit, but decisions and results belong in
+3. **The bridge** (`tools/relay_daemon.py`, running as pid in `state/agent/relay.pid`) makes those
+   two into one channel, so nobody has to care which one the other used:
+
+   ```
+   a #relay post tagged [windows]      ->  appended to to-container.md
+   a new message in to-windows.md      ->  echoed to #relay as [container]
+   /say <text> typed in #relay by a human ->  appended to to-container.md
+   ```
+
+   Control it with `bash tools/relay_ctl.sh start|stop|status|logs`.
+
+   Caveat worth knowing: without the privileged **Message Content** intent the bot cannot read the
+   text of messages other users type, only its own - `GET /messages` returns `content: ""` for them.
+   Interactions are exempt, which is why `/say` is the human's way in. Enabling the intent in the
+   Developer Portal would make plain messages work too, but nothing here depends on it.
+
+4. **Git** - the durable record. `tools/mail.py` needs no commit, but decisions and results belong in
    `WORKLOG.md` and get pushed, so history stays complete even if the scratch tree is wiped.

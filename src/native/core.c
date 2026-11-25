@@ -11,6 +11,47 @@
  */
 #include <windows.h>
 #include <winhttp.h>
+
+/* WinHTTP is not loaded in the client, and a static import cannot be bound by a manual map that
+   only resolves already-loaded modules, so the entry points are fetched on first use instead. */
+typedef struct {
+    HINTERNET (WINAPI *open)(LPCWSTR, DWORD, LPCWSTR, LPCWSTR, DWORD);
+    HINTERNET (WINAPI *connect)(HINTERNET, LPCWSTR, INTERNET_PORT, DWORD);
+    HINTERNET (WINAPI *open_request)(HINTERNET, LPCWSTR, LPCWSTR, LPCWSTR, LPCWSTR,
+                                     LPCWSTR *, DWORD);
+    BOOL (WINAPI *add_headers)(HINTERNET, LPCWSTR, DWORD, DWORD);
+    BOOL (WINAPI *send)(HINTERNET, LPCWSTR, DWORD, LPVOID, DWORD, DWORD, DWORD_PTR);
+    BOOL (WINAPI *receive)(HINTERNET, LPVOID);
+    BOOL (WINAPI *query_headers)(HINTERNET, DWORD, LPCWSTR, LPVOID, LPDWORD, LPDWORD);
+    BOOL (WINAPI *read)(HINTERNET, LPVOID, DWORD, LPDWORD);
+    BOOL (WINAPI *close)(HINTERNET);
+} winhttp_api;
+
+static winhttp_api g_http;
+static int g_httpTried;
+
+static int load_http(void)
+{
+    HMODULE module;
+    if (g_http.open) return 1;
+    if (g_httpTried) return 0;
+    g_httpTried = 1;
+    module = LoadLibraryA("winhttp.dll");
+    if (!module) return 0;
+#define BIND(field, name) *(FARPROC *)&g_http.field = GetProcAddress(module, name)
+    BIND(open, "WinHttpOpen");
+    BIND(connect, "WinHttpConnect");
+    BIND(open_request, "WinHttpOpenRequest");
+    BIND(add_headers, "WinHttpAddRequestHeaders");
+    BIND(send, "WinHttpSendRequest");
+    BIND(receive, "WinHttpReceiveResponse");
+    BIND(query_headers, "WinHttpQueryHeaders");
+    BIND(read, "WinHttpReadData");
+    BIND(close, "WinHttpCloseHandle");
+#undef BIND
+    return g_http.open && g_http.connect && g_http.open_request && g_http.send &&
+           g_http.receive && g_http.query_headers && g_http.read && g_http.close;
+}
 #include "patterns.h"
 
 /* MSVC has SEH; mingw does not, so a mingw build degrades to plain blocks instead of
@@ -671,29 +712,30 @@ static int cb_request(lua_State *state)
     MultiByteToWideChar(CP_ACP, 0, host, -1, wideUrl, 2048);
     if (type[0]) MultiByteToWideChar(CP_ACP, 0, type, -1, wideType, 128);
 
-    session = WinHttpOpen(L"Umbra/0.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    if (!load_http()) { failarg(state, "no winhttp"); return 0; }
+    session = g_http.open(L"Umbra/0.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                           WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!session) return failarg(state, "winhttp open"), 3;
-    connect = WinHttpConnect(session, wideUrl, port, 0);
-    if (!connect) { WinHttpCloseHandle(session); return failarg(state, "connect"), 3; }
+    connect = g_http.connect(session, wideUrl, port, 0);
+    if (!connect) { g_http.close(session); return failarg(state, "connect"), 3; }
 
     {   wchar_t widePath[1024];
         MultiByteToWideChar(CP_ACP, 0, path, -1, widePath, 1024);
-        request = WinHttpOpenRequest(connect, wideMethod, widePath, 0,
+        request = g_http.open_request(connect, wideMethod, widePath, 0,
                                      WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                      secure ? WINHTTP_FLAG_SECURE : 0);
     }
     if (!request) {
-        WinHttpCloseHandle(connect); WinHttpCloseHandle(session);
+        g_http.close(connect); g_http.close(session);
         return failarg(state, "request"), 3;
     }
-    if (type[0]) WinHttpAddRequestHeaders(request, wideType, -1, WINHTTP_ADDREQ_FLAG_ADD);
+    if (type[0]) g_http.add_headers(request, wideType, -1, WINHTTP_ADDREQ_FLAG_ADD);
 
-    if (WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+    if (g_http.send(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
                            body[0] ? body : WINHTTP_NO_REQUEST_DATA, lstrlenA(body), lstrlenA(body), 0) &&
-        WinHttpReceiveResponse(request, 0)) {
+        g_http.receive(request, 0)) {
         DWORD code = 0, size = sizeof(code);
-        WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+        g_http.query_headers(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
                             WINHTTP_HEADER_NAME_BY_INDEX, &code, &size, WINHTTP_NO_HEADER_INDEX);
         status = (int)code;
     }
@@ -708,7 +750,7 @@ static int cb_request(lua_State *state)
         DWORD total = 0;
         while (all && total < (1u << 20) - 4096) {
             chunk = all + total;
-            if (!WinHttpReadData(request, chunk, 4096, &read) || read == 0) break;
+            if (!g_http.read(request, chunk, 4096, &read) || read == 0) break;
             total += read;
         }
         g.pushls(state, all ? all : "", all ? total : 0);
@@ -716,9 +758,9 @@ static int cb_request(lua_State *state)
     }
     if (g.setfield) g.setfield(state, -2, "body");
 
-    WinHttpCloseHandle(request);
-    WinHttpCloseHandle(connect);
-    WinHttpCloseHandle(session);
+    g_http.close(request);
+    g_http.close(connect);
+    g_http.close(session);
     return 1;
 }
 

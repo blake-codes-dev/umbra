@@ -23,7 +23,14 @@ namespace Umbra.Services;
 /// </summary>
 public sealed class Injector
 {
-    private const uint ProcessAccess = 0x1F0FFF;
+    /* Byfron hands out PROCESS_ALL_ACCESS only to elevated callers, so fall back to just the
+       rights the map needs: vm read/write/op, thread create, query. */
+    private static readonly uint[] AccessMasks =
+    {
+        0x1F0FFF,                                                   // PROCESS_ALL_ACCESS
+        0x0002 | 0x0008 | 0x0010 | 0x0020 | 0x0400 | 0x00100000,    // create thread, vm ops, query
+        0x0008 | 0x0010 | 0x0020 | 0x00100000,                      // no thread create
+    };
     private const uint MemCommitReserve = 0x3000;
     private const uint PageExecuteReadWrite = 0x40;
     private const uint PageReadWrite = 0x04;
@@ -61,6 +68,38 @@ public sealed class Injector
         public uint Protect;
         public uint Type;
     }
+
+    [DllImport("kernel32", CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadLibraryA(string name);
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern uint GetProcessId(IntPtr process);
+
+    [DllImport("kernel32", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint pid);
+
+    [DllImport("kernel32", CharSet = CharSet.Unicode)]
+    private static extern bool Module32First(IntPtr snapshot, ref ModuleEntry entry);
+
+    [DllImport("kernel32", CharSet = CharSet.Unicode)]
+    private static extern bool Module32Next(IntPtr snapshot, ref ModuleEntry entry);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ModuleEntry
+    {
+        public int Size;
+        public int ModuleId;
+        public int ProcessId;
+        public int GlobalUsage;
+        public int ProcessUsage;
+        public IntPtr Base;
+        public int ImageSize;
+        public IntPtr Module;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string Name;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string Path;
+    }
+
+    
 
     [DllImport("kernel32", SetLastError = true)]
     private static extern bool VirtualFreeEx(IntPtr process, IntPtr at, UIntPtr size, uint type);
@@ -114,7 +153,12 @@ public sealed class Injector
         if (!File.Exists(dllPath)) return new(false, $"no payload at {dllPath}", pid);
         var image = File.ReadAllBytes(dllPath);
 
-        var process = OpenProcess(ProcessAccess, false, pid);
+        var process = IntPtr.Zero;
+        foreach (var mask in AccessMasks)
+        {
+            process = OpenProcess(mask, false, pid);
+            if (process != IntPtr.Zero) break;
+        }
         if (process == IntPtr.Zero) return new(false, "open process refused (run as admin?)", pid);
         try
         {
@@ -177,7 +221,7 @@ public sealed class Injector
         }
         catch (Exception ex)
         {
-            return new(false, ex.GetType().Name + ": " + ex.Message, pid);
+            return new(false, ex.GetType().Name + ": " + ex.Message + "\n" + ex.StackTrace, pid);
         }
         finally
         {
@@ -278,6 +322,20 @@ public sealed class Injector
             return parsed;
         }
 
+        /// <summary>RVA to file offset. The byte array is the file, so RVAs cannot index it:
+        /// a high section RVA (0xE000 here) is far past the end of a 34 KB file.</summary>
+        public int OffsetOf(uint rva)
+        {
+            foreach (var section in Sections)
+            {
+                if (rva < section.VirtualAddress) continue;
+                var within = rva - section.VirtualAddress;
+                if (within >= Math.Max(section.VirtualSize, section.RawSize)) continue;
+                return (int)section.RawPointer + (int)within;
+            }
+            return Sections.Count > 0 ? -1 : (int)rva;
+        }
+
         /// <summary>Adds the difference between where the image wants to be and where it is.</summary>
         public bool ApplyRelocations(IntPtr process, IntPtr remote, byte[] image)
         {
@@ -285,8 +343,10 @@ public sealed class Injector
             long delta = remote.ToInt64() - (long)0x140000000;
             if (delta == 0) return true;
 
+            var at0 = OffsetOf(RelocRva);
+            if (at0 < 0 || at0 >= image.Length) return true;
             var block = new byte[RelocSize];
-            Array.Copy(image, RelocRva, block, 0, (int)Math.Min(RelocSize, image.Length - RelocRva));
+            Array.Copy(image, at0, block, 0, (int)Math.Min(RelocSize, image.Length - at0));
 
             var at = 0;
             while (at + 8 <= block.Length)
@@ -311,6 +371,26 @@ public sealed class Injector
             return true;
         }
 
+        /// <summary>Base of a module in the target, by name. Zero when it is not loaded there.</summary>
+        private static IntPtr RemoteModule(IntPtr process, string name)
+        {
+            var pid = GetProcessId(process);
+            var snapshot = CreateToolhelp32Snapshot(0x8, pid);
+            if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return IntPtr.Zero;
+            try
+            {
+                var entry = new ModuleEntry { Size = Marshal.SizeOf<ModuleEntry>() };
+                if (!Module32First(snapshot, ref entry)) return IntPtr.Zero;
+                do
+                {
+                    if (string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase))
+                        return entry.Base;
+                } while (Module32Next(snapshot, ref entry));
+                return IntPtr.Zero;
+            }
+            finally { CloseHandle(snapshot); }
+        }
+
         /// <summary>Binds imports against the module already loaded in the target.</summary>
         public bool BindImports(IntPtr process, IntPtr remote)
         {
@@ -331,7 +411,10 @@ public sealed class Injector
                 if (string.IsNullOrEmpty(moduleName)) return false;
 
                 var local = GetModuleHandleA(moduleName);
-                if (local == IntPtr.Zero) return false;          // the target must have it loaded
+                if (local == IntPtr.Zero) local = LoadLibraryA(moduleName);   // winhttp is not ours yet
+                if (local == IntPtr.Zero) return false;
+                var remoteBase = RemoteModule(process, moduleName);
+                if (remoteBase == IntPtr.Zero) return false;      // not present in the target
 
                 var thunkRva = originalThunk != 0 ? originalThunk : firstThunk;
                 for (var index = 0; ; index += 8)
@@ -345,7 +428,9 @@ public sealed class Injector
                     IntPtr address;
                     if ((value & 0x8000000000000000) != 0)
                     {
-                        address = GetProcAddress(local, "#" + (value & 0xFFFF));
+                        var ord = GetProcAddress(local, "#" + (value & 0xFFFF));
+                        if (ord == IntPtr.Zero) return false;
+                        address = remoteBase + (int)(ord.ToInt64() - local.ToInt64());
                     }
                     else
                     {
@@ -355,8 +440,10 @@ public sealed class Injector
                         if (!ReadProcessMemory(process, remote + (int)rva, hint, (UIntPtr)2, out _)) return false;
                         var name = ReadString(process, remote + (int)rva + 2, 128);
                         if (string.IsNullOrEmpty(name)) return false;
-                        address = GetProcAddress(local, name);
-                        if (address == IntPtr.Zero) return false;
+                        var proc = GetProcAddress(local, name);
+                        if (proc == IntPtr.Zero) return false;
+                        /* bases differ per process, so port the offset rather than the address */
+                        address = remoteBase + (int)(proc.ToInt64() - local.ToInt64());
                     }
                     if (!Write(process, remote + (int)(firstThunk + index), BitConverter.GetBytes(address.ToInt64())))
                         return false;

@@ -1,0 +1,23 @@
+/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/tools/relay_daemon.py:258: DeprecationWarning: There is no current event loop
+  asyncio.run(asyncio.gather(poll_loop(state, own_id, args.interval), gateway(state)))
+2026-11-25T05:34:29Z  relay up as 1574839950862712912, last=1575020913487913081 mirrored=1
+Traceback (most recent call last):
+  File "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/tools/relay_daemon.py", line 262, in <module>
+    main()
+    ~~~~^^
+  File "/config/.deepai-code/scratch/2026-11-24-try-to-go-into-github-5017c798/umbra/tools/relay_daemon.py", line 258, in main
+    asyncio.run(asyncio.gather(poll_loop(state, own_id, args.interval), gateway(state)))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.13/asyncio/runners.py", line 89, in run
+    raise ValueError("a coroutine was expected, got {!r}".format(coro))
+ValueError: a coroutine was expected, got <_GatheringFuture pending>
+<sys>:0: RuntimeWarning: coroutine 'gateway' was never awaited
+<sys>:0: RuntimeWarning: coroutine 'poll_loop' was never awaited
+2026-11-25T05:35:34Z  relay up as 1574839950862712912, last=1575020913487913081 mirrored=1
+2026-11-25T05:35:36Z  gateway ready as mr bot
+2026-11-25T05:36:06Z  <- mr bot: [windows] [windows] loop test: daemon should turn this into mail
+2026-11-25T05:36:10Z  -> #relay: and this mail should show up in #relay without me touching it
+2026-11-25T05:36:14Z  . mr bot: our echo

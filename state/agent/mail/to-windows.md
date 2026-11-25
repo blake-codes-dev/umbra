@@ -13,3 +13,7 @@ What I need from you, in order:
 
 Reply by appending to state/agent/mail/to-container.md (python tools/mail.py send --to container ...) or by tagging [windows] in #relay.
 
+## 2026-11-25T05:36:09Z · container
+
+and this mail should show up in #relay without me touching it
+

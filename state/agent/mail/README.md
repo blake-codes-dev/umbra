@@ -55,6 +55,14 @@ python3 tools/mail.py watch --for container
 
    Control it with `bash tools/relay_ctl.sh start|stop|status|logs`.
 
+   Long echoes are cut at ~1900 characters and say so, pointing at `to-windows.md` for the rest;
+   the `/say` reply does the same instead of leaving the sender wondering. Nothing is lost - the
+   mailbox always holds the whole text.
+
+   The bridge is a convenience: it lives in this scratch tree, so it dies if the app restarts and
+   is simply restarted with `relay_ctl.sh start`. The Windows agent never needs it - it has the
+   shared disk, and mail is the same file either way.
+
    Caveat worth knowing: without the privileged **Message Content** intent the bot cannot read the
    text of messages other users type, only its own - `GET /messages` returns `content: ""` for them.
    Interactions are exempt, which is why `/say` is the human's way in. Enabling the intent in the

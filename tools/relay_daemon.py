@@ -145,10 +145,12 @@ def push(state):
         body = message.split("\n", 1)[-1].strip() if message.startswith("## ") else message
         if not body:
             continue
+        text = BOT_MARK + " " + body
+        if len(text) > 1900:                      # say so, rather than trailing off mid-sentence
+            text = text[:1840] + "\n... (truncated, full text is in state/agent/mail/to-windows.md)"
         mark = digest(body)
         if mark not in state["posted"]:
-            call("/channels/%s/messages" % CHANNEL,
-                 {"content": (BOT_MARK + " " + body)[:1900]})
+            call("/channels/%s/messages" % CHANNEL, {"content": text})
             state["posted"].append(mark)
             sent += 1
             print("%s  -> #relay: %s" % (now(), body.splitlines()[0][:90]))
@@ -221,7 +223,8 @@ async def gateway(state):
                         state["posted"].append(digest(text))
                         save_state(state)
                         print("%s  <- /say %s: %s" % (now(), who, text[:90]))
-                        respond(payload["d"], "logged")
+                        respond(payload["d"], "logged" if len(text) <= 1800 else
+                                "logged, but long: the tail is only in my mailbox")
                     elif op in (7, 9):
                         break
                 beat_task.cancel()

@@ -2034,6 +2034,7 @@ static void install_now(void)
 }
 
 /* ------------------------------------------------------------------ entry */
+static int g_guardReady;
 __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
 {
     char path[MAX_PATH];
@@ -2042,6 +2043,10 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
     bus_header *header;
 
     (void)parameter;
+#ifndef UMBRA_HOST
+    /* a manual map never runs DllMain, so the CFG thunks have to come up here */
+    if (!g_guardReady) { g_guardReady = 1; init_guard_thunks(); }
+#endif
     stage("bus");
     GetEnvironmentVariableA("LOCALAPPDATA", path, MAX_PATH);
     lstrcatA(path, "\\Umbra");
@@ -2051,6 +2056,7 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
 
     file = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                        0, OPEN_ALWAYS, 0, 0);
+    if (file == INVALID_HANDLE_VALUE) { char m[128]; wsprintfA(m, "dbg bus file err %lu", GetLastError()); put(m); }
     if (file != INVALID_HANDLE_VALUE) {
         HANDLE section = CreateFileMappingA(file, 0, PAGE_READWRITE, 0, BUS_SIZE, 0);
         if (section) {
@@ -2059,6 +2065,7 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
         }
         CloseHandle(file);
     }
+    put(path);
     if (!g.bus) {
         fail("bus", "no mapping");
         return 1;
@@ -2081,7 +2088,9 @@ __declspec(dllexport) DWORD WINAPI umbra_entry(void *parameter)
     }
 
     stage("state");
+    put("dbg state");
     g.state = state_from_scriptcontext();
+    put("dbg state done");
     if (!g.state) {
         fail("state", "lua_State not found yet");
     } else {

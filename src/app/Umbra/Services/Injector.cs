@@ -197,8 +197,11 @@ public sealed class Injector
                 if (!pe.BindImports(process, remote))
                     return new(false, "import binding failed", pid);
 
-                // the core's entry does the rest; it never returns (it serves the pipe)
-                var start = remote + (nint)pe.EntryPoint;
+                /* the COFF entry is DllMain, which a manual map never calls, so the thread starts
+                   at the exported umbra_entry and that does the attach work itself */
+                var entryRva = pe.Export("umbra_entry");
+                if (entryRva == 0) entryRva = pe.EntryPoint;
+                var start = remote + (nint)entryRva;
                 Protect(process, remote, pe.SizeOfImage, PageExecuteReadWrite);
                 var thread = CreateRemoteThread(process, IntPtr.Zero, UIntPtr.Zero, start, IntPtr.Zero, 0, out _);
                 if (thread == IntPtr.Zero) return new(false, "remote thread refused", pid);
@@ -277,6 +280,8 @@ public sealed class Injector
         public uint SizeOfImage;
         public uint SizeOfHeaders;
         public uint EntryPoint;
+        public byte[] image;
+        public uint ExportRva;
         public uint RelocRva;
         public uint RelocSize;
         public uint ImportRva;
@@ -292,6 +297,7 @@ public sealed class Injector
             var coff = peOffset + 4;
             var parsed = new PeImage
             {
+                image = image,
                 Machine = BitConverter.ToUInt16(image, coff),
             };
 
@@ -306,6 +312,7 @@ public sealed class Injector
             parsed.RelocRva = BitConverter.ToUInt32(image, directories + 5 * 8);
             parsed.RelocSize = BitConverter.ToUInt32(image, directories + 5 * 8 + 4);
             parsed.ImportRva = BitConverter.ToUInt32(image, directories + 1 * 8);
+            parsed.ExportRva = BitConverter.ToUInt32(image, directories);
 
             var sectionCount = BitConverter.ToUInt16(image, coff + 2);
             var at = optional + BitConverter.ToUInt16(image, coff + 16);
@@ -334,6 +341,32 @@ public sealed class Injector
                 return (int)section.RawPointer + (int)within;
             }
             return Sections.Count > 0 ? -1 : (int)rva;
+        }
+
+        /// <summary>RVA of an export by name; 0 when the image does not export it.</summary>
+        public uint Export(string name)
+        {
+            if (ExportRva == 0) return 0;
+            var at = OffsetOf(ExportRva);
+            if (at < 0 || at + 40 > image.Length) return 0;
+            var count = Math.Min(BitConverter.ToUInt32(image, at + 24), 64);
+            var namesAt = OffsetOf(BitConverter.ToUInt32(image, at + 32));
+            var funcsAt = OffsetOf(BitConverter.ToUInt32(image, at + 28));
+            var ordinalsAt = OffsetOf(BitConverter.ToUInt32(image, at + 36));
+            if (namesAt < 0 || funcsAt < 0 || ordinalsAt < 0) return 0;
+            if (namesAt + 4 * count > image.Length || ordinalsAt + 2 * count > image.Length) return 0;
+            for (var i = 0; i < count; i++)
+            {
+                var nameAt = OffsetOf(BitConverter.ToUInt32(image, namesAt + i * 4));
+                if (nameAt < 0 || nameAt >= image.Length) continue;
+                var end = Array.IndexOf(image, (byte)0, nameAt);
+                if (end < 0) continue;
+                if (Encoding.ASCII.GetString(image, nameAt, end - nameAt) != name) continue;
+                var ordinal = BitConverter.ToUInt16(image, ordinalsAt + i * 2);
+                var slot = funcsAt + ordinal * 4;
+                return slot + 4 <= image.Length ? BitConverter.ToUInt32(image, slot) : 0;
+            }
+            return 0;
         }
 
         /// <summary>Adds the difference between where the image wants to be and where it is.</summary>

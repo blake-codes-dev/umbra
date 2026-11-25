@@ -21,3 +21,7 @@ ValueError: a coroutine was expected, got <_GatheringFuture pending>
 2026-11-25T05:36:06Z  <- mr bot: [windows] [windows] loop test: daemon should turn this into mail
 2026-11-25T05:36:10Z  -> #relay: and this mail should show up in #relay without me touching it
 2026-11-25T05:36:14Z  . mr bot: our echo
+2026-11-25T05:40:13Z  relay up as 1574839950862712912, last=1575022269154197555 mirrored=2
+2026-11-25T05:40:15Z  gateway ready as mr bot
+2026-11-25T05:40:31Z  -> #relay: long message test. lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor
+2026-11-25T05:40:35Z  . mr bot: our echo

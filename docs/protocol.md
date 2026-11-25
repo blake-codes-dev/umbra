@@ -104,3 +104,7 @@ first when present.
 Every failure answers with a stage, so a bug report is diagnosable in one run:
 `scan`, `state`, `compile`, `resume`, `pipe`, `bus`. A Roblox update is then a pattern fix
 against a named stage, not a hunt.
+
+## Patching
+
+How the client is hooked, and the four rules that keep it alive: see [hooks.md](hooks.md).

@@ -213,3 +213,4 @@ websockets.exceptions.ConnectionClosedError: no close frame received or sent
 2026-11-25T16:54:47Z  gateway ready as mr bot
 2026-11-25T17:04:54Z  -> #relay: 0.1.12-dev is up: f659d1f88059c84c4346121a7f66510300cbacfeb0fa1d04082a6feceb59a406 - the r
 2026-11-25T17:04:58Z  . mr bot: our echo
+2026-11-25T17:12:17Z  gateway ready as mr bot

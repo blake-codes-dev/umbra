@@ -144,6 +144,12 @@ static int fake_spawn(lua_State *state)
 /* the hook patches the first 5 bytes, so the fakes must be long enough that the patch does not
    eat the next function's entry (a 3-byte `xor eax,eax; ret` gets its neighbour clobbered) */
 static volatile int g_waits;
+/* returns its argument, so a lost rax is unmissable */
+ATTR_NOINLINE static int fake_identity(int value)
+{
+    return value;
+}
+
 static int fake_wait(lua_State *state)
 {
     g_waits++;          /* the side effect also keeps the body above 5 bytes at every -O level */
@@ -805,6 +811,28 @@ int main(int argc, char **argv)
     extern char *g_apiSource, *g_runnerSource;
     g_apiSource = apiSource;
     g_runnerSource = runnerSource;
+
+    /* The return value of a hooked function must survive the stub: the replay used to park its own
+       resume address in rax, so every hooked call returned a pointer and nothing noticed, because
+       the checks that existed compared a value the hook had just corrupted in the same way. This
+       one is the direct assertion - a sentinel in, the same sentinel out. */
+    {
+        unsigned char keepId[16];
+        memcpy(keepId, (void *)fake_identity, sizeof(keepId));
+        g_noThunk = 0;
+        if (install_hook((void *)fake_identity)) {
+            int a = fake_identity(4242);
+            int b = fake_identity(-7);
+            CHECK(a == 4242 && b == -7, "a hooked call still returns its own result");
+        }
+        {   extern int VirtualProtect(void *, unsigned long long, unsigned long, unsigned long *);
+            unsigned long was = 0;
+            VirtualProtect((void *)fake_identity, sizeof(keepId), 0x40, &was);
+            memcpy((void *)fake_identity, keepId, sizeof(keepId));
+            VirtualProtect((void *)fake_identity, sizeof(keepId), was, &was);
+        }
+        FlushInstructionCache(GetCurrentProcess(), (void *)fake_identity, 16);
+    }
 
     /* the hook machinery, proved on a leaf function whose result is observable */
     {

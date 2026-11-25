@@ -473,7 +473,8 @@ static int looks_resting(lua_State *state)
 #endif
     if (base != top) return 0;
     if (top < 0x10000 || base < 0x10000) return 0;
-    (void)func; (void)global;
+    if (global < 0x10000) return 0;
+    (void)func;
     return 1;
 }
 

@@ -61,3 +61,12 @@ One line per work block: what changed, what was measured, what is next.
 - wall: client text is packed. only pages the game has already executed read back, the rest is
   zeros, so every anchor reports "unmeasured" and calibrate() faults inside the string->ref path
   and takes the client down with it even though the handler catches the fault.
+
+- **the mapper was relocating against the wrong base.** rm -rf of a pointer crash: ApplyRelocations
+  used 0x140000000 (exe) for a dll linked at 0x180000000, so every relocated pointer landed 1 GB
+  high and every deref of a .rdata pointer faulted. now reads ImageBase from the optional header.
+  after that the payload runs all the way through calibrate without a fault.
+- scan cost matters more than it looks: a safe_read per byte took minutes over the 50 MB rdata and
+  the client died mid-scan, so find_name/find_reference now copy one page and search in memory.
+- state: attach + hijack + pipe are solid, calibrate completes, but every anchor is still 0 and
+  state_from_scriptcontext finds no state, so nothing Luau resolves yet.

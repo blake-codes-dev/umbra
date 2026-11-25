@@ -12,6 +12,7 @@ typedef struct { void *BaseAddress; void *AllocBase; unsigned AllocProtect; unsi
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 #include "lualib.h"
 #include "luacode.h"
@@ -534,7 +535,7 @@ static char *slurp(const char *path)
     char *buffer;
     if (file == INVALID_HANDLE_VALUE) return 0;
     size = GetFileSize(file, 0);
-    buffer = (char *)VirtualAlloc(0, size + 1, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    buffer = (char *)malloc(size + 1);          /* malloc, because every caller frees it */
     if (buffer && ReadFile(file, buffer, size, &read, 0)) buffer[read] = 0;
     CloseHandle(file);
     return buffer;
@@ -811,6 +812,11 @@ int main(void)
     runnerSource = slurp("src/luau/runner.luau");
     CHECK(apiSource && runnerSource, "read api.luau and runner.luau");
     if (!apiSource || !runnerSource) return 1;
+    /* hand the sources straight to the core: read_chunk would go looking in %LOCALAPPDATA%, which
+       is the app's job and would drag the folder name into the harness */
+    extern char *g_apiSource, *g_runnerSource;
+    g_apiSource = apiSource;
+    g_runnerSource = runnerSource;
 
     {
         /* run the runner through a loader so a failure shows a line number and a traceback */

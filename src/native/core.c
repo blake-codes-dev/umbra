@@ -1323,25 +1323,35 @@ static int is_name(void *where, size_t min, size_t max)
 /* find "name" in the module's read-only data */
 static char *find_name(unsigned char *base, const char *name, size_t size, char *from)
 {
+    /* one page is copied once and then searched in memory: a safe_read per byte costs minutes on
+       a 50 MB data section, and the hijacked client thread has to be given back quickly */
     IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
     IMAGE_NT_HEADERS *nt;
     IMAGE_SECTION_HEADER *section;
+    unsigned char page_buf[0x1000 + 64];
     int i;
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
     nt = (IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
     section = IMAGE_FIRST_SECTION(nt);
     for (i = 0; i < nt->FileHeader.NumberOfSections; i++, section++) {
-        unsigned char *at, *end;
+        unsigned char *page, *stop;
         if (!(section->Characteristics & IMAGE_SCN_MEM_READ)) continue;
         if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) continue;   /* packed */
-        at = base + section->VirtualAddress;
-        end = at + section->Misc.VirtualSize - size;
-        for (; at < end; at++) {
-            char window[32];
-            if (from && at < (unsigned char *)from) continue;
-            if (!safe_read(at, window, size)) continue;
-            if (!memcmp(window, name, size) && at[size] == 0 && is_name(at, size + 1, 32))
-                return (char *)at;
+        page = base + section->VirtualAddress;
+        stop = page + section->Misc.VirtualSize;
+        for (; page < stop; page += 0x1000) {
+            size_t len = (size_t)(stop - page);
+            unsigned char *at;
+            size_t k;
+            if (len > 0x1000) len = 0x1000;
+            if (!safe_read(page, page_buf, len + 48)) continue;
+            for (k = 0; k + size + 1 < len + 48; k++) {
+                at = page + k;
+                if (from && at < (unsigned char *)from) continue;
+                if (memcmp(page_buf + k, name, size)) continue;
+                if (page_buf[k + size] != 0) continue;
+                if (is_name(at, size + 1, 32)) return (char *)at;
+            }
         }
     }
     return 0;
@@ -1350,11 +1360,12 @@ static char *find_name(unsigned char *base, const char *name, size_t size, char 
 /* rip-relative references to a fixed address, in executable memory only */
 static void *find_reference(void *needle, size_t limit)
 {
-    /* the referencing code is always inside the client image, so the search is bounded to it
-       (its own readable pages) instead of every executable page in the process */
+    /* the referencing code is always inside the client image; each page is copied once and then
+       scanned in memory */
     unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
+    unsigned char buffer[0x1000 + 64];
     size_t span;
-    unsigned char *page, *end, *at;
+    unsigned char *page, *end;
     size_t seen = 0;
     (void)limit;
     if (!base) return 0;
@@ -1362,21 +1373,25 @@ static void *find_reference(void *needle, size_t limit)
     if (!span) return 0;
     page = 0;
     while ((page = next_scan(base, span, page, &end)) != 0) {
-        for (at = page; at + 8 <= end && seen < (192u << 20); at++, seen++) {
-            unsigned char head[8];
+        size_t len = (size_t)(end - page);
+        size_t k;
+        if (len > 0x1000) len = 0x1000;
+        if (!safe_read(page, buffer, len)) { page = end; continue; }
+        for (k = 0; k + 8 <= len; k++, seen++) {
+            unsigned char *head = buffer + k;
             long displacement;
             unsigned char *target;
-            if (!safe_read(at, head, 8)) break;
+            if (seen > (192u << 20)) return 0;
             if ((head[0] & 0xF8) != 0x48) continue;              /* REX.W */
             /* lea r64,[rip+d] takes the address, mov r64,[rip+d] loads a slot holding it */
             if (head[1] != 0x8D && head[1] != 0x8B) continue;
             if ((head[2] & 0xC7) != 0x05) continue;              /* [rip + disp32] */
             displacement = *(long *)&head[3];
-            target = (unsigned char *)at + 7 + displacement;
-            if (target == (unsigned char *)needle) return at;
+            target = page + k + 7 + displacement;
+            if (target == (unsigned char *)needle) return page + k;
             if (head[1] == 0x8B) {
                 void *slot = 0;
-                if (safe_read(target, &slot, sizeof(slot)) && slot == needle) return at;
+                if (safe_read(target, &slot, sizeof(slot)) && slot == needle) return page + k;
             }
         }
         page = end;
@@ -2238,8 +2253,10 @@ __declspec(dllexport) DWORD WINAPI lyphen_entry(void *parameter)
         code = run_entry();
     }
     LYPHEN_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-        char line[64];
-        wsprintfA(line, "fail entry code %lx", GetExceptionCode());
+        char line[160];
+        EXCEPTION_POINTERS *info = GetExceptionInformation();
+        wsprintfA(line, "fail entry %s code %lx at %p", g_stage, GetExceptionCode(),
+                  info->ExceptionRecord->ExceptionAddress);
         put(line);
         emit("e", 0, line);
     }

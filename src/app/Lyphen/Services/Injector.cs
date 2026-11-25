@@ -544,6 +544,7 @@ public sealed class Injector
         public uint SizeOfImage;
         public uint SizeOfHeaders;
         public uint EntryPoint;
+        public ulong ImageBase;
         public byte[] image;
         public uint ExportRva;
         public uint RelocRva;
@@ -569,6 +570,7 @@ public sealed class Injector
             var magic = BitConverter.ToUInt16(image, optional);
             if (magic != 0x20B) return null;                     // PE32+ only
             parsed.EntryPoint = BitConverter.ToUInt32(image, optional + 16);
+            parsed.ImageBase = BitConverter.ToUInt64(image, optional + 24);
             parsed.SizeOfImage = BitConverter.ToUInt32(image, optional + 56);
             parsed.SizeOfHeaders = BitConverter.ToUInt32(image, optional + 60);
 
@@ -637,7 +639,9 @@ public sealed class Injector
         public bool ApplyRelocations(IntPtr process, IntPtr remote, byte[] image)
         {
             if (RelocSize == 0) return true;
-            long delta = remote.ToInt64() - (long)0x140000000;
+            /* the image's own base, not an assumed one: a dll links at 0x180000000, an exe at
+               0x140000000, and a wrong delta puts every relocated pointer 1 GB+ into nothing */
+            long delta = remote.ToInt64() - (long)(ImageBase != 0 ? ImageBase : 0x140000000);
             if (delta == 0) return true;
 
             var at0 = OffsetOf(RelocRva);

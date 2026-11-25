@@ -32,6 +32,7 @@ CHANNEL = "1575012687878950992"
 API = "https://discord.com/api/v10"
 BOT_MARK = "[container]"
 INBOUND_MARK = "[windows]"
+ASK_ROLE = "1575038913779859581"        # @agents, mentionable, so a question notifies both sides
 
 
 def token():
@@ -162,7 +163,8 @@ def push(state):
 def interaction_text(payload):
     """The /say command carries its own text, so reading it needs no message-content intent."""
     data = payload.get("data") or {}
-    if (data.get("name") or "").lower() != "say":
+    name = (data.get("name") or "").lower()
+    if name not in ("say", "ask"):
         return None
     options = {option["name"]: option.get("value") for option in data.get("options", [])}
     text = (options.get("text") or "").strip()
@@ -219,6 +221,23 @@ async def gateway(state):
                         who, text = parsed
                         if not text:
                             respond(payload["d"], "empty")
+                            continue
+                        if (payload["d"].get("data") or {}).get("name", "").lower() == "ask":
+                            # one question, both sides: mail is the notification, the post is the record
+                            for side in ("container", "windows"):
+                                append_mail(side, "question:" + who, text)
+                            state["posted"].append(digest(text))
+                            save_state(state)
+                            try:
+                                call("/channels/%s/messages" % CHANNEL, {"content": (
+                                    "<@&%s> question from **%s**%s\n%s" % (
+                                        ASK_ROLE, who,
+                                        " (also mailed to both inboxes)",
+                                        text[:1500]))})
+                            except Exception as error:
+                                print("%s  ! announce failed: %s" % (now(), error))
+                            print("%s  <- /ask %s: %s" % (now(), who, text[:90]))
+                            respond(payload["d"], "sent to both agents")
                             continue
                         append_mail("container", "relay:" + who, text)
                         state["posted"].append(digest(text))

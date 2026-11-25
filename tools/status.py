@@ -100,20 +100,33 @@ def channel():
         sys.exit("state/discord.json has no channels.status_board")
 
 
+ROTATE = 3000          # discord refuses edits to messages older than an hour, so start a new one
+
+
 def update(_args):
     try:
         state = json.load(open(STATE))
     except (OSError, ValueError):
-        state = {"messages": {}}
+        state = {"messages": {}, "born": {}}
+    state.setdefault("born", {})
     here = presence()
     for side in SIDES:
         body = render(side, here.get(side))
         message = state["messages"].get(side)
+        if message and time.time() - state["born"].get(side, 0) > ROTATE:
+            message = None                                  # age it out before discord refuses
         if not message:
             created = call("/channels/%s/messages" % channel(), {"content": body})
             state["messages"][side] = created["id"]
+            state["born"][side] = time.time()
         else:
-            call("/channels/%s/messages/%s" % (channel(), message), {"content": body}, method="PATCH")
+            try:
+                call("/channels/%s/messages/%s" % (channel(), message), {"content": body},
+                     method="PATCH")
+            except SystemExit:
+                created = call("/channels/%s/messages" % channel(), {"content": body})
+                state["messages"][side] = created["id"]
+                state["born"][side] = time.time()
     json.dump(state, open(STATE, "w"), indent=1)
 
 

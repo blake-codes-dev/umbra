@@ -116,3 +116,33 @@ base==top, ci==ciBase) plus the loadstring/print closures by scanning for their 
 closure+0x28, and writes `%LOCALAPPDATA%\Lyphen\state.txt` as "state closure print". The payload
 parses that file. Offsets verified against a real state: `L+0x20` ciBase, `L+0x58` ci, `L+0x68`
 global, `L+0x70` func, `L+0x78` base, `L+0x80` top, `nci` at `L+0x34`.
+
+## 2026-11-25 13:50 - acg, cfg, and why the client kept dying
+
+The client runs with **Arbitrary Code Guard and Control Flow Guard**. Both took a measurement each,
+and both changed the design:
+
+- ACG: `VirtualAlloc(MEM_COMMIT, PAGE_EXECUTE_READWRITE)` -> 1655 "process prohibits dynamic code
+  generation"; `VirtualProtect(RWX/RW)` on an image page -> 5/87; `WriteProcessMemory(self)` -> 998.
+  Out of process is different: `VirtualProtectEx` 0x04/0x40 -> 87, **0x80 PAGE_EXECUTE_WRITECOPY ->
+  OK**, 0x20 -> OK, and the write then lands (verified byte for byte). So a private exec page is
+  impossible; stubs go in a `.lystub` section mapped `0x40` from our headers, and every patch is made
+  by the injector with the WRITECOPY dance. Nothing of the old in-process trampoline design survives.
+- CFG: the death was the **indirect jump at the end of the hijack stub**. Parsed the crashpad
+  minidump: `rip` = stub+0x68 (that `jmp [r11]`), `r11` = the correct slot, slot content = a valid
+  `win32u.dll` address, page committed RWX, code c0000005 - operands fine, branch rejected. Replaced
+  every `jmp rax` / `jmp [r11]` with `push; ret` (ret is not a CFG-checked branch), in the hijack
+  stub, the hook stub and the replay tail. The client now survives the whole entry; before that it
+  died 2-3 s after "entry ret" every single time, which is what looked like "the entry kills it".
+- Hijack slots: the stub used to keep one shared rip/rsp pair for all pinned threads, so thread A
+  resumed at thread B's rip with A's rsp. Now eight stub copies with their own pair.
+- **The patch does not survive.** Applied and verified, and seconds later the page is the original
+  prologue again - hyperion re-arms and restores. The injector therefore re-lands every requested
+  patch on a 120 ms watchdog (byte compare first). A one-shot patch is a false pass.
+- Also fixed the //./pipe enumeration stall with a marker file, made the pipe instance unlimited and
+  gave `getctx`'s output a proper use.
+
+Measured, worth keeping: nothing in a live client calls the base library closures. `pcall`, `print`
+and `tolstring` hooks install cleanly and never fire on a server, because the engine calls its C API
+directly and only Lua code goes through `luaB_*`. So the trigger is now the direct call from the
+hijacked thread (`stop.txt` containing `d`), which is what the smoke needs anyway.

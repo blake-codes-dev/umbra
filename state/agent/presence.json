@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795614050.35627,
-  "iso": "2026-11-25T13:40:50Z",
-  "note": "fixed his mingw build breaks + EH handling",
+  "at": 1795614752.070105,
+  "iso": "2026-11-25T13:52:32Z",
+  "note": "CFG tail + decoder + arena fixes; found install-reentry overflow",
   "state": "working",
   "alerted": false,
-  "beats": 9
+  "beats": 10
  },
  "windows": {
   "at": 1795605523.3253636,

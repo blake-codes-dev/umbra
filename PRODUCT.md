@@ -28,14 +28,14 @@ than launching late.
 
 ## 2. Brand
 
-Name **Umbra** (fallback Sable). Near-black UI, one accent, no key system, no ads, no watermark.
+Name **Lyphen** (fallback Sable). Near-black UI, one accent, no key system, no ads, no watermark.
 GitHub repo + Pages landing, changelog mirrored in Discord. Assets: wordmark, 512 icon, 3
 screenshots, 30 s clip.
 
 ## 3. Discord structure (bot-managed)
 
 ```
-UMBRA
+LYPHEN
 ├─ #welcome        rules + how to get access
 ├─ #announcements  read-only
 ├─ #changelog      version · hash · fixes · known issues

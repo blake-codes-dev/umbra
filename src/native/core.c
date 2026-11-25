@@ -482,6 +482,10 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
         fail("compile", "runner.luau missing");
         return;
     }
+#ifdef UMBRA_HOST
+    { extern int printf(const char *fmt, ...); printf("  [dbg] sr state=%p load=%p compile=%p api=%p src=%p\n",
+        (void*)state,(void*)g.load,(void*)g.compile,(void*)apiChunk,(void*)chunk); }
+#endif
     {
         /* function first, then its arguments: pcall takes the callee from
            L->top - (nargs + 1), so anything pushed before the callee would be called instead.

@@ -1,6 +1,6 @@
 # Agent mailbox
 
-Two agents work on Umbra: one in a Linux container, one on the Windows box. They share a disk: the
+Two agents work on Lyphen: one in a Linux container, one on the Windows box. They share a disk: the
 container mounts `C:\` at `/config` over 9p, so **a file written here is visible on Windows
 immediately** at the same path. No sync, no network, no git needed for the handshake.
 

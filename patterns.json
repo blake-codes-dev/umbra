@@ -131,6 +131,22 @@
    "sig": "4C 89 44 24 18 55 56 57 41 56 48 8D 6C 24 B8 48 81 EC 48 01 00 00 48 63 F2 4D 8B F0 8B D6 48 8B",
    "hits": 1,
    "note": "identified as the callee of luaB_print (L, idx, &len), sig unique in the dump"
+  },
+  {
+   "name": "lua_pcall",
+   "string_va": null,
+   "func_va": "0x254da20",
+   "sig": "4C 8B DC 53 56 48 83 EC 68 4C 8B 51 58 48 8B D9 49 89 6B 18 33 F6 49 89 7B E8 4D 89 63 E0 49 8B",
+   "hits": 1,
+   "note": "tail of luaB_pcall wrapper at 0x58c7f80 jumps here with nres=-1, msgh=0"
+  },
+  {
+   "name": "lua_pushnumber",
+   "string_va": null,
+   "func_va": "0x408de30",
+   "sig": "40 53 48 83 EC 30 48 8B 51 58 48 8B D9 48 8B 81 80 00 00 00 48 83 C0 10 0F 29 74 24 20 0F 28 F1",
+   "hits": 2,
+   "note": "xmm1 double, tag 3 store, ret 1 - deduped copy"
   }
  ],
  "client_version": "2.748.1526.0"

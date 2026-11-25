@@ -1,6 +1,6 @@
-# Handoff: continue Umbra on the Windows box
+# Handoff: continue Lyphen on the Windows box
 
-You are picking up a Roblox executor + in-game mod menu + spoofer called **Umbra**. Another agent
+You are picking up a Roblox executor + in-game mod menu + spoofer called **Lyphen**. Another agent
 built it inside a Linux container (WSL, no Roblox, no GPU) and verified everything it could under
 Wine. You have the real thing: Windows, MSVC, and Roblox itself. Your job is to finish the last
 mile: build natively, prove the executor injects and runs a script inside Roblox, and fix whatever
@@ -18,9 +18,9 @@ Read these first, in this order:
 ## Where things are
 
 ```
-src/app/Umbra/            WPF GUI (.NET 9, net9.0-windows, win-x64)
+src/app/Lyphen/            WPF GUI (.NET 9, net9.0-windows, win-x64)
   Services/Injector.cs    manual-map PE loader (Parse/Relocations/Imports/CreateRemoteThread)
-  Services/Runtime.cs     copies runner.luau + api.luau into %LOCALAPPDATA%\Umbra
+  Services/Runtime.cs     copies runner.luau + api.luau into %LOCALAPPDATA%\Lyphen
   Services/PipeBackend.cs named-pipe client speaking docs/protocol.md
 src/native/core.c         the injected payload (no CRT, PIC, entry DllMain)
 src/native/build.bat      MSVC build for stub.dll + core.dll
@@ -29,8 +29,8 @@ src/luau/api.luau         tier-1 executor API installed into every script env
 src/luau/menu.luau        the mod menu (tabs, sliders, keybinds, live log)
 src/luau/library/*.luau   14 ready-to-run scripts, one-click load in the menu
 tools/build_menu.py       inlines library/*.luau into menu.luau (`--check` must pass)
-tools/release.sh          builds payload + GUI, publishes dist/Umbra-<v>-win-x64.zip
-tools/umbra_bot.py        Discord bot (tickets, filters, help modal)
+tools/release.sh          builds payload + GUI, publishes dist/Lyphen-<v>-win-x64.zip
+tools/lyphen_bot.py        Discord bot (tickets, filters, help modal)
 tests/host.c              native harness: runs core.c against a real Luau VM, 22 checks
 ```
 
@@ -40,8 +40,8 @@ The executor is **one native call in, then it pumps itself**. The injected core 
 into the target `lua_State` and calls it once. The runner drains a command ring on
 `RunService.Heartbeat`, so no yield ever crosses a native frame and the core adds **no thread**.
 Commands and output go through a shared-memory bus (64 KiB header + 60 x 1 KiB command slots +
-100 x 512 B output slots) mapped at `%LOCALAPPDATA%\Umbra\bus-<pid>.bin`. A named pipe
-`\\.\pipe\umbra-<pid>` carries the same events to the GUI. If you are tempted to spawn a thread or
+100 x 512 B output slots) mapped at `%LOCALAPPDATA%\Lyphen\bus-<pid>.bin`. A named pipe
+`\\.\pipe\lyphen-<pid>` carries the same events to the GUI. If you are tempted to spawn a thread or
 hook a keyboard poll to run scripts, don't: it changes what the anti-cheat can see.
 
 Second design decision: **`.text` is packed (Byfron)**, so RVAs read from the file are garbage.
@@ -57,7 +57,7 @@ falls back to the injected-thread install path instead of guessing.
 natively on Windows:
 
 ```
-build:  vcvars64 && cl /nologo /O1 /DUMBRA_HOST tests\host.c src\native\core.c ...
+build:  vcvars64 && cl /nologo /O1 /DLYPHEN_HOST tests\host.c src\native\core.c ...
 run:    dist\test\RobloxPlayerBeta.exe
 ```
 
@@ -80,7 +80,17 @@ tools\mail.bat read
 tools\mail.bat send "harness green natively, attach works, anchors frozen"
 ```
 
-`state/agent/mail/README.md` has the details. `#relay` on Discord is bridged to the same mailbox by
+`state/agent/mail/README.md` has the details.
+
+**The owner can ask you and me one question at a time:** he types `/ask <text>` in `#relay`. The
+bridge mails it to *both* of us and announces it under an `@agents` mention, so it is a real
+notification rather than something to notice later. Answer in the channel as `[windows] ...` - that
+gets mirrored to my mailbox - and answer as soon as you see it, even if the answer is "not yet".
+`/say <text>` is the one-way version if he only wants to tell one of us something.
+
+**Beat after every step:** `tools\pulse.bat beat "pinning gettop"`. A stale beat makes the watchdog
+shout in `#relay` and drop `state/agent/ALERT.md` with your last note as the resume point, so dying
+mid-build is survivable instead of leaving me waiting on a reply forever. `#relay` on Discord is bridged to the same mailbox by
 `tools/relay_daemon.py` (`bash tools/relay_ctl.sh status|start|logs`): a `[windows]`-tagged post
 becomes mail for me, and mail for you is echoed there as `[container]`. Typing `/say <text>` in
 `#relay` also lands in my mailbox - that path is for the owner, since reading plain messages would
@@ -123,8 +133,8 @@ alignment. Work through it on Windows where you have a real debugger:
 ## Then, in this order
 
 1. `src\native\build.bat`, then `tools\release.sh` equivalent on Windows (or use the container
-   script if it still runs). Ship `Umbra.exe` + `library\` + `luau\` + `payload\core.dll`.
-2. **Live test with an ALT account, never the main.** Launch Roblox, join any game, start Umbra,
+   script if it still runs). Ship `Lyphen.exe` + `library\` + `luau\` + `payload\core.dll`.
+2. **Live test with an ALT account, never the main.** Launch Roblox, join any game, start Lyphen,
    Attach, then load one library script from the menu. Watch the GUI log. Success = the mod menu
    window appears in-game and a script like `fullbright.luau` visibly works.
    Rules: no `.text` patching of the client, no re-attach loops, three launches maximum in a row

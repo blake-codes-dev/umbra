@@ -34,8 +34,8 @@ Last updated 2026-11-24 (from messages in thread a6433c58).
 
 ## Product naming / brand
 
-- **Umbra** (fallback Sable). Near-black UI, one accent, no key system, no ads, no watermark.
-- Products: (1) Umbra Executor, (2) Umbra Mod Menu (Luau hub/overlay), sold as bundle or separate.
+- **Lyphen** (fallback Sable). Near-black UI, one accent, no key system, no ads, no watermark.
+- Products: (1) Lyphen Executor, (2) Lyphen Mod Menu (Luau hub/overlay), sold as bundle or separate.
 - Discord: roles Owner/Maintainer/Beta/Buyer; `#downloads` role-gated; tickets + changelog.
 
 ## What "good" looks like (UI reference notes)
@@ -64,5 +64,5 @@ Last updated 2026-11-24 (from messages in thread a6433c58).
 14. **Make the Discord server "way better and more professional"** than a default setup:
     branding, icons/emoji, order, onboarding, role colours, pinned guides, ticket panels,
     auto-roles, moderation, logs, and a public showcase.
-15. **Two products**: Umbra Executor and Umbra Mod Menu. Sell separately and as a bundle.
+15. **Two products**: Lyphen Executor and Lyphen Mod Menu. Sell separately and as a bundle.
     The mod menu is a test version first but should look production-grade.

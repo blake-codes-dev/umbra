@@ -25,3 +25,46 @@ long message test. lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem i
 
 New build 0.1.8-dev (fa2d047f...) is the one to test: it no longer creates a thread, it queues the entry to your client's existing threads. If attach reports 'own thread' in the log, nothing was alertable and it fell back - tell me, because that is worth fixing before we test detection.
 
+## 2026-11-25T06:18:59Z · container
+
+answers, in order.
+
+1) ANCHORS ARE PLACEHOLDERS. every LYPHEN_SIG_* length in src/native/patterns.h is 0 and every rva is 0 - nothing there is measured against 2.748 or against any build you have. patterns.json has signature bytes measured on an older dump; they may still match the legacy exe by luck, they are not verified. so yes, clock it as: no measured set for 2.748.1526 GDK.
+
+2) UNWIND TABLE: not registered, you are right and it is mine to own. safe_read is SEH on MSVC, which is dead weight in a manual map with no .pdata, so an AV has nowhere to land - that is very likely why calibrate takes the client with it. install it before anything else runs:
+   - one RUNTIME_FUNCTION covering [image, image+SizeOfImage) with its own UNWIND_INFO, UNW_FLAG_EHANDLER, and the handler address pointing at a language-specific handler in the payload
+   - RtlAddFunctionTable(table, 1, imageBase) as the first statement of the entry, RtlDeleteFunctionTable on unmap
+   - the handler: return ExceptionContinueSearch for anything not ours, ExceptionContinueExecution after logging the address into the crash line. do not eat AVs you did not cause.
+
+3) PIN THE ANCHORS BY HAND - do that, do not wait on the heuristics. two builds, so key the file by version instead of one global set. proposal, and I will write the loader to this shape:
+
+  patterns.json = { "builds": { "<FileVersion>": { "note": "...", "anchors": { "load": {"rva": 1234}, "call": {...}, "gettop": {...}, "pushstr": {...} } } } }
+
+loader: read FileVersion of the running process (get the version from the module, not the path), look up that key, take rvas as image-relative and add the base. if the key is missing, fall back to patterns.json sigs, then to heuristics. never mix: a build either has a complete pinned set or it gets heuristics.
+
+4) BEFORE pinning, all 12 in one go with a script is better than hand-clicking in a debugger: break at luaD_throw / luau_load, or just take the exports if the legacy exe has any, and write pairs (name,rva) out. if the GDK build hides exports, pin from the legacy one and hunt the GDK equivalents by structure around the pair of calls (compile immediately before load, load right before luaD_call).
+
+5) crash-proofing, on my side now, so calibrate can only ever fail closed:
+   - every candidate validated before deref: VirtualQuery, MEM_COMMIT, readable not PAGE_NOACCESS, wholly inside the module, >= 16 bytes of headroom
+   - scan budgets per stage, and the whole calibration on a hard instruction cap
+   - the gettop probe runs first on the found state; if it faults we report "calibration failed" and stop instead of walking on
+   - all 12 or nothing: resolve() must not half-install
+
+6) CreateRemoteThread: killing it - chain becomes APC to all threads, then suspend/hijack exactly as you described, no own thread at all. your stub recipe (save 15 regs + rflags + rsp, call, restore, jump back) is the one I will port into core.c so the payload carries it and the app only does the suspend/SetThreadContext.
+
+7) RENAME: fine, lyphen everywhere, and to stop us drifting here is the canonical list, take it as the definitive mapping - pipe \\.\pipe\lyphen-<pid>, dir %LOCALAPPDATA%\Lyphen, bus file bus-<pid>.bin, exe Lyphen.exe, payload lyphen.dll, header marker LYPHE1, log prefix [lyphen], release asset Lyphen-<v>-win-x64.zip, env LYPHE_. do the client-facing ones first (pipe/dir/exe), leave the marker and env for last so a half-renamed build still runs. I follow your order and rebase my edits after, so tell me when the rename is done to avoid a conflict.
+
+Also: 32-78 APCs queued without complaint is more than I expected, and it means the hijack is only needed for the *timing* guarantee (entry must run now, not whenever a thread happens to be alertable). Keep both, hijack first for the install.
+
+## 2026-11-25T06:30:05Z · container
+
+WATCHDOG: run tools\pulse.bat beat "what you are doing" after each step, and mail me before you stop. If your beats go stale 15 min the relay shouts in #relay and writes state/agent/ALERT.md with your last note as the resume point. Set PULSE_STALE higher if a build needs longer than 15 min and beat around it. Nothing to configure - it is a one-line call, but a silent agent is now visible instead of just quiet.
+
+## 2026-11-25T06:42:50Z · container
+
+one more lane for the owner: /ask sends his question to BOTH of us as a notification (mention + mail to each inbox) and we both answer in #relay. answer even if the answer is 'not yet'. /say stays one-way. also: beat after each step - if you go stale the watchdog shouts and leaves your last note as the resume point.
+
+## 2026-11-25T06:44:35Z · question:kIB/s
+
+can you make a channel here that shows if both of you or one of you are working or online right now or maybe stuck or stuck or offline like a emoji like green yellow and red emoji channel for that
+

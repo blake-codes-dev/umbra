@@ -21,7 +21,7 @@ Rule: nothing becomes a design decision while it is *assumed*.
 | `CreateRemoteThread` returns exit code `0xC000071C` for *any* payload (even `mov eax,42; ret`) | measured | 3 runs today | rerun with a second payload |
 | `LoadLibraryW` from a remote thread does **not** put the DLL in the module list | measured | module list after inject | `hijack.py --force`, then check modules |
 | Thread hijack executes a 40-byte stub and resumes the thread | observed once | client stayed responsive | `hijack.py --force` on the alt |
-| Pipe `\.\pipe\umbra_stub` works in-process | measured | in-process load printed `stub: attached` | rerun |
+| Pipe `\.\pipe\lyphen_stub` works in-process | measured | in-process load printed `stub: attached` | rerun |
 | Pipe works across processes (stub in client) | **unknown** | no message yet | first alt test |
 | Client survives injection attempts | measured | one crash, then restart | count crashes in `state/supervisor/events.jsonl` |
 

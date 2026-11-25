@@ -33,7 +33,7 @@ Do not end a turn just because a sub-task finished; end interim messages with
 
 ## After Roblox ships
 - [ ] **Fortnite mod menu** - second product, same shape as this one: desktop surface + in-game
-      menu, sold next to Umbra. Notes to start from, not decisions yet:
+      menu, sold next to Lyphen. Notes to start from, not decisions yet:
       - in-game side is UE (UObject/SDK) rather than Luau, so the runner design ports but the
         script layer does not; UMG or a Slate/ImGui overlay draws the menu
       - injection is a signed-driver-free route (DLL + manual map) or the Easy Anti-Cheat safe
@@ -42,7 +42,7 @@ Do not end a turn just because a sub-task finished; end interim messages with
         are shared, and only `src/game/` differs
       - do not start until the Roblox executor runs a chunk in a live client, so the shared
         pieces (bus, runner loop, updater, store) are proven first
-- [ ] **undetected first, same as Umbra** - no module, no thread, no window, nothing written to
+- [ ] **undetected first, same as Lyphen** - no module, no thread, no window, nothing written to
       the game folder; hand-rolled mapping only, and a signature report of our own so a ban wave
       is diagnosed instead of guessed
 - [ ] **kernel driver, phase 2** - a signed driver to get around the anti-cheat's user-mode

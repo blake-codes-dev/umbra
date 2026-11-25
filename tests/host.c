@@ -730,6 +730,17 @@ int main(void)
         }
         FlushInstructionCache(GetCurrentProcess(), (void *)lua_pcall, sizeof(orig));
     }
+    apiSource = slurp("src/luau/api.luau");
+    runnerSource = slurp("src/luau/runner.luau");
+    CHECK(apiSource && runnerSource, "read api.luau and runner.luau");
+    if (!apiSource || !runnerSource) return 1;
+    g_installed = 0;                 /* the hook must install with the sources already in hand */
+    /* hand the sources straight to the core: read_chunk would go looking in %LOCALAPPDATA%, which
+       is the app's job and would drag the folder name into the harness */
+    extern char *g_apiSource, *g_runnerSource;
+    g_apiSource = apiSource;
+    g_runnerSource = runnerSource;
+
     /* the hook machinery, proved on a leaf function whose result is observable */
     {
         unsigned char keepTop[16];
@@ -808,16 +819,6 @@ int main(void)
         FlushInstructionCache(GetCurrentProcess(), (void *)lua_gettop, 16);
     }
 
-    apiSource = slurp("src/luau/api.luau");
-    runnerSource = slurp("src/luau/runner.luau");
-    CHECK(apiSource && runnerSource, "read api.luau and runner.luau");
-    if (!apiSource || !runnerSource) return 1;
-    /* hand the sources straight to the core: read_chunk would go looking in %LOCALAPPDATA%, which
-       is the app's job and would drag the folder name into the harness */
-    extern char *g_apiSource, *g_runnerSource;
-    g_apiSource = apiSource;
-    g_runnerSource = runnerSource;
-
     {
         /* run the runner through a loader so a failure shows a line number and a traceback */
         static char wrapped[65536];
@@ -828,6 +829,8 @@ int main(void)
                  "assert(chunk)\n"
                  "local ok, err = xpcall(chunk, function(e) return e .. '\\n' .. debug.traceback('', 2) end, bridge, bus)\n"
                  "if not ok then error(err, 0) end\n", runnerSource);
+        printf("  [dbg] spawn api=%p chunk=%p len=%zu state=%p\n", (void *)apiSource,
+               (void *)wrapped, strlen(wrapped), (void *)L);
         spawn_runner(L, apiSource, wrapped);
     }
     pump_output(transcript, sizeof(transcript), 0);

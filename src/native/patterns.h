@@ -5,9 +5,9 @@
 #define LYPHEN_CLIENT_VERSION "2.748.1526.0"
 
 /* rva of each resolved function, 0 = not measured yet; sig is the scan fallback */
-#define LYPHEN_RVA_LUA_PCALL 0x0u
-static const unsigned char LYPHEN_SIG_LUA_PCALL[] = { 0xCC };
-#define LYPHEN_SIGLEN_LUA_PCALL 0u
+#define LYPHEN_RVA_LUA_PCALL 0x254da20u
+static const unsigned char LYPHEN_SIG_LUA_PCALL[] = { 0x4C, 0x8B, 0xDC, 0x53, 0x56, 0x48, 0x83, 0xEC, 0x68, 0x4C, 0x8B, 0x51, 0x58, 0x48, 0x8B, 0xD9, 0x49, 0x89, 0x6B, 0x18, 0x33, 0xF6, 0x49, 0x89, 0x7B, 0xE8, 0x4D, 0x89, 0x63, 0xE0, 0x49, 0x8B };
+#define LYPHEN_SIGLEN_LUA_PCALL 32u
 #define LYPHEN_RVA_LUAU_LOAD 0x0u
 static const unsigned char LYPHEN_SIG_LUAU_LOAD[] = { 0xCC };
 #define LYPHEN_SIGLEN_LUAU_LOAD 0u
@@ -29,9 +29,9 @@ static const unsigned char LYPHEN_SIG_LUA_RAWSETI[] = { 0xCC };
 #define LYPHEN_RVA_LUA_PUSHLSTRING 0x0u
 static const unsigned char LYPHEN_SIG_LUA_PUSHLSTRING[] = { 0xCC };
 #define LYPHEN_SIGLEN_LUA_PUSHLSTRING 0u
-#define LYPHEN_RVA_LUA_PUSHNUMBER 0x0u
-static const unsigned char LYPHEN_SIG_LUA_PUSHNUMBER[] = { 0xCC };
-#define LYPHEN_SIGLEN_LUA_PUSHNUMBER 0u
+#define LYPHEN_RVA_LUA_PUSHNUMBER 0x408de30u
+static const unsigned char LYPHEN_SIG_LUA_PUSHNUMBER[] = { 0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x8B, 0x51, 0x58, 0x48, 0x8B, 0xD9, 0x48, 0x8B, 0x81, 0x80, 0x00, 0x00, 0x00, 0x48, 0x83, 0xC0, 0x10, 0x0F, 0x29, 0x74, 0x24, 0x20, 0x0F, 0x28, 0xF1 };
+#define LYPHEN_SIGLEN_LUA_PUSHNUMBER 32u
 #define LYPHEN_RVA_LUA_PUSHBOOLEAN 0x0u
 static const unsigned char LYPHEN_SIG_LUA_PUSHBOOLEAN[] = { 0xCC };
 #define LYPHEN_SIGLEN_LUA_PUSHBOOLEAN 0u

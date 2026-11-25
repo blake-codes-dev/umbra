@@ -3,7 +3,7 @@
      WPF resolves windows and controls by name from BAML, so those types stay public.
      Settings and Identity keep their property names because they are serialised to json. -->
 <Obfuscator>
-  <Var name="InPath" value="src/app/Umbra/bin/Release/net9.0-windows/win-x64" />
+  <Var name="InPath" value="src/app/Lyphen/bin/Release/net9.0-windows/win-x64" />
   <!-- ref packs: needs to resolve WPF when run off Windows -->
   <Var name="ExtraFrameworkFolders" value="/config/.nuget/packages/microsoft.windowsdesktop.app.ref/9.0.23/ref/net9.0;/config/.nuget/packages/microsoft.netcore.app.ref/9.0.23/ref/net9.0" />
   <Var name="OutPath" value="dist/protected" />
@@ -14,21 +14,21 @@
   <Var name="RegenerateDebugInfo" value="true" />
   <Var name="UseUnicodeNames" value="true" />
 
-  <Module file="$(InPath)/Umbra.dll">
+  <Module file="$(InPath)/Lyphen.dll">
     <!-- XAML roots and anything the BAML names -->
-    <SkipType name="Umbra.App" />
-    <SkipType name="Umbra.MainWindow" />
-    <SkipType name="Umbra.SpooferWindow" />
+    <SkipType name="Lyphen.App" />
+    <SkipType name="Lyphen.MainWindow" />
+    <SkipType name="Lyphen.SpooferWindow" />
     <!-- json contract -->
-    <SkipType name="Umbra.Services.Settings" />
-    <SkipType name="Umbra.Services.Identity" />
+    <SkipType name="Lyphen.Services.Settings" />
+    <SkipType name="Lyphen.Services.Identity" />
     <!-- public API of the services is small and documented, keep it readable -->
-    <SkipType name="Umbra.Services.SystemInfo" />
-    <SkipType name="Umbra.Services.Spoofer" />
-    <SkipType name="Umbra.Services.Elevation" />
-    <SkipType name="Umbra.Services.RobloxWeb" />
-    <SkipType name="Umbra.Services.LocationTable" />
-    <SkipType name="Umbra.Services.Library" />
-    <SkipType name="Umbra.Services.LibraryScript" />
+    <SkipType name="Lyphen.Services.SystemInfo" />
+    <SkipType name="Lyphen.Services.Spoofer" />
+    <SkipType name="Lyphen.Services.Elevation" />
+    <SkipType name="Lyphen.Services.RobloxWeb" />
+    <SkipType name="Lyphen.Services.LocationTable" />
+    <SkipType name="Lyphen.Services.Library" />
+    <SkipType name="Lyphen.Services.LibraryScript" />
   </Module>
 </Obfuscator>

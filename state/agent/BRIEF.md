@@ -20,7 +20,7 @@ actions hour 0/6 · night 0/40
 12:41:03 handoff_to_agent (internet is up; qwen stands down)
 
 ## next
-{"next": ["M2 close: call luaB_print with one string argument so the log line is distinctive, then confirm the exact 'UMBRA' line in AppData/Local/Roblox/logs", "add a thunk variant that stores rax into the bus so calls can return values (proves execution without the log)", "make the state finder wait for a thread executing client .text (pick_thread) and retry on OpenProcess denial", "then M3: keep the found lua_State in the stub, push a Luau runner closure, and drive the Heartbeat queue", "re-baseline footprint_audit for the injected state; unmap stale images on re-inject"], "quirks": ["GDK activation (shell:AppsFolder\\...!Game) currently dies ~12 s after start; roblox:// starts the legacy client instead", "legacy client logs to AppData/Local/Roblox/logs, GDK to AppData/Local/RobloxPCGDK/logs - luacall.py now reads the legacy dir", "Hyperion denies PROCESS_ALL_ACCESS in bursts; retry, do not conclude the client is gone", "hard-killing the client leaves a stale mutex: the next instance sits in waitForNewPlayerProcess and exits"]}
+{"next": ["M2 close: call luaB_print with one string argument so the log line is distinctive, then confirm the exact 'LYPHEN' line in AppData/Local/Roblox/logs", "add a thunk variant that stores rax into the bus so calls can return values (proves execution without the log)", "make the state finder wait for a thread executing client .text (pick_thread) and retry on OpenProcess denial", "then M3: keep the found lua_State in the stub, push a Luau runner closure, and drive the Heartbeat queue", "re-baseline footprint_audit for the injected state; unmap stale images on re-inject"], "quirks": ["GDK activation (shell:AppsFolder\\...!Game) currently dies ~12 s after start; roblox:// starts the legacy client instead", "legacy client logs to AppData/Local/Roblox/logs, GDK to AppData/Local/RobloxPCGDK/logs - luacall.py now reads the legacy dir", "Hyperion denies PROCESS_ALL_ACCESS in bursts; retry, do not conclude the client is gone", "hard-killing the client leaves a stale mutex: the next instance sits in waitForNewPlayerProcess and exits"]}
 
 ## milestones (PLAN.md §10)
 | M0 | Toolchain + binary recon: PE dumper (Python, from process memory — disk is ACL-blocked), pattern harness, `patterns.json` seed | every signatur
@@ -32,7 +32,7 @@ actions hour 0/6 · night 0/40
 | M6 | Hardening: teleport, multi-instance, update check, diagnostics panel, branded installer | survives a Roblox version bump with only `patterns.js
 
 ## vault
-drift +0 -0 ~0 · backup D:\UmbraVault\2026-11-23_2212
+drift +0 -0 ~0 · backup D:\LyphenVault\2026-11-23_2212
 
 ## recent issues
 08:26:07 issue {'issues': ['DeepAI Code was not running (restarted)']}
@@ -50,7 +50,7 @@ drift +0 -0 ~0 · backup D:\UmbraVault\2026-11-23_2212
 14. **Make the Discord server "way better and more professional"** than a default setup:
     branding, icons/emoji, order, onboarding, role colours, pinned guides, ticket panels,
     auto-roles, moderation, logs, and a public showcase.
-15. **Two products**: Umbra Executor and Umbra Mod Menu. Sell separately and as a bundle.
+15. **Two products**: Lyphen Executor and Lyphen Mod Menu. Sell separately and as a bundle.
     The mod menu is a test version first but should look production-grade.
 
 ## WORKLOG (last 6)

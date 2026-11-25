@@ -51,7 +51,7 @@ new thread). Follow it literally; it exists because context is the scarcest reso
 
 21. Personal folders (Desktop, Documents, Downloads, Pictures, Videos, Music, OneDrive)
     are read-only for the automation. Only two tools write: guard.py (deletes, inside the
-    project only) and vault.py (copies out to D:/UmbraVault). Never add a delete path that
+    project only) and vault.py (copies out to D:/LyphenVault). Never add a delete path that
     does not call guard.may_delete().
 22. Local models choose action names, never paths or commands. If a new action needs a
     path, it is fixed in code, not proposed by the model.

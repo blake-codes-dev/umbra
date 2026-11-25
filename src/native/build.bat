@@ -10,5 +10,5 @@ rem /GS- keeps us free of the CRT's stack cookie; every risky deref is in SEH in
 cl /nologo /c /O2 /Os /GS- /EHsc crtinfo.cpp /Fo:crtinfo.obj
 cl /nologo /LD /O2 /Os /GS- /GR- /EHs-c- /D_USRDLL core.c ^
    /link /ENTRY:DllMain /NODEFAULTLIB:libcmt /NODEFAULTLIB:vcruntime ^
-   kernel32.lib user32.lib winhttp.lib libvcruntime.lib chkstk.obj crtinfo.obj  /Fe:core.dll /MAP:core.map
+   kernel32.lib user32.lib winhttp.lib libvcruntime.lib chkstk.obj crtinfo.obj /SECTION:.lystub,ERW /Fe:core.dll /MAP:core.map
 popd

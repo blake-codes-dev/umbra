@@ -50,6 +50,12 @@ static const unsigned char LYPHEN_SIG_LUAB_LOADSTRING[] = { 0xCC };
 #define LYPHEN_RVA_LUA_PUSHVFSTRING 0x2584420u
 static const unsigned char LYPHEN_SIG_LUA_PUSHVFSTRING[] = { 0xCC };
 #define LYPHEN_SIGLEN_LUA_PUSHVFSTRING 0u
+#define LYPHEN_RVA_LUAB_PCALL 0x58c8030u
+static const unsigned char LYPHEN_SIG_LUAB_PCALL[] = { 0xCC };
+#define LYPHEN_SIGLEN_LUAB_PCALL 0u
+#define LYPHEN_RVA_LUAB_PRINT 0x41dc170u
+static const unsigned char LYPHEN_SIG_LUAB_PRINT[] = { 0xCC };
+#define LYPHEN_SIGLEN_LUAB_PRINT 0u
 #define LYPHEN_RVA_LUAU_EXECUTE_DISPATCH 0x797395u
 static const unsigned char LYPHEN_SIG_LUAU_EXECUTE_DISPATCH[] = { 0xFF, 0x24, 0xFB, 0x41, 0x88, 0x00, 0x48, 0x8B, 0x41, 0x50, 0x49, 0x89, 0x40, 0x18, 0x4C, 0x89, 0x41, 0x50, 0x48, 0x83, 0x83, 0x80, 0x00, 0x00, 0x00, 0xF0, 0x49, 0x83, 0xC6, 0x10, 0xE9, 0xE0 };
 #define LYPHEN_SIGLEN_LUAU_EXECUTE_DISPATCH 32u

@@ -154,7 +154,7 @@
    "func_va": "0x41dc080",
    "sig": null,
    "hits": 1,
-   "note": "live: global 'loadstring' node in the game env table, key text verified, closure+0x28"
+   "note": "live: global loadstring closure+0x28, key text verified"
   },
   {
    "name": "lua_pushvfstring",
@@ -163,6 +163,22 @@
    "sig": null,
    "hits": 1,
    "note": "(L, fmt, va) - moves r8 to rbx, rdx to rdi, rcx to rsi then formats; pushing with it needs no lua_pushlstring"
+  },
+  {
+   "name": "luaB_pcall",
+   "string_va": null,
+   "func_va": "0x58c8030",
+   "sig": null,
+   "hits": 1,
+   "note": "live: global pcall closure+0x28 - the dump was a different build, these rvas are measured on the running client"
+  },
+  {
+   "name": "luaB_print",
+   "string_va": null,
+   "func_va": "0x41dc170",
+   "sig": null,
+   "hits": 1,
+   "note": "live: global print closure+0x28"
   }
  ],
  "client_version": "2.748.1526.0"

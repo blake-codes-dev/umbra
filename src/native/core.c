@@ -94,6 +94,7 @@ static int load_http(void)
 typedef void *lua_State;
 #endif
 typedef int (*luau_load_t)(lua_State *, const char *, const char *, size_t, int);
+static lua_State *state_from_file(void);
 /* Luau >=0.6 splits the two: compile source to bytecode, then load the bytecode. The bytecode
    buffer is malloc'd by Luau and deliberately leaked here (a few KB, once per inject) because
    freeing it would cross CRTs. */
@@ -107,6 +108,8 @@ typedef void *(*lua_pushcclosure_t)(lua_State *, void *, const char *, int, void
 typedef const char *(*lua_tolstring_t)(lua_State *, int, size_t *);
 typedef void (*lua_pushlstring_t)(lua_State *, const char *, size_t);
 typedef int (*luaB_loadstring_t)(lua_State *);
+typedef int (*lua_cfunction_t)(lua_State *);
+static const char *top_message(lua_State *, char *, size_t);
 typedef void (*lua_pushvfstring_t)(lua_State *, const char *, void *);
 typedef void (*lua_createtable_t)(lua_State *, int, int);
 typedef void (*lua_setfield_t)(lua_State *, int, const char *);
@@ -131,6 +134,10 @@ typedef struct {
     lua_pushcclosure_t pushcclosure;
     lua_pushlstring_t pushls;
     luaB_loadstring_t loadstr;
+    void *loadstringClosure;      /* heap closure for loadstring, from the gui */
+    void *printClosure;           /* heap closure for print, probe only */
+    lua_cfunction_t luaBpcall;    /* base library pcall: hook target and callable stand-in for lua_pcall */
+    lua_cfunction_t luaBprint;    /* base library print; only ever hooked */
     lua_pushvfstring_t pushvf;
     lua_tolstring_t tolstring;
     lua_createtable_t createtable;
@@ -284,14 +291,18 @@ static int safe_read(const void *at, void *out, size_t size)
     SIZE_T got = 0;
     return ReadProcessMemory(GetCurrentProcess(), at, out, size, &got) && got == size;
 #else
-    armed_page(at, size);
+    /* No arming first. A guard page has to fault - Hyperion's vectored handler decrypts the page
+       and resumes us - so a guard is passed on (CONTINUE_SEARCH) and only a real access violation
+       (nothing backed there at all) is treated as unreadable. Clearing the guard ourselves would
+       skip the decrypt and hand back ciphertext. */
     LYPHEN_TRY {
         const unsigned char *from = (const unsigned char *)at;
         unsigned char *to = (unsigned char *)out;
         for (size_t i = 0; i < size; i++) to[i] = from[i];
         return 1;
     }
-    LYPHEN_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+    LYPHEN_EXCEPT(GetExceptionCode() == 0x80000001u ? EXCEPTION_CONTINUE_SEARCH
+                                                    : EXCEPTION_EXECUTE_HANDLER) {
         return 0;
     }
 #endif
@@ -478,14 +489,14 @@ static lua_State *state_from_scriptcontext(void)
                     pageMark = (unsigned char *)((ULONG_PTR)walk & ~(ULONG_PTR)0xFFF);
                     armed_page(pageMark, 8);
                 }
-                globalState = *(unsigned long long *)walk;
+                if (!safe_read(walk, &globalState, 8)) continue;
                 unsigned long long slot;
                 void *candidate = 0;
                 if (globalState < 0x10000 || (globalState & 7)) continue;
                 if (!window_ok((void *)((ULONG_PTR)globalState + 0x2f0), 8, &winBase, &winEnd))
                     continue;
                 slot = (ULONG_PTR)globalState + 0x2f0;
-                candidate = *(void **)slot;
+                if (!safe_read((void *)slot, &candidate, 8)) continue;
                 if (!candidate || ((ULONG_PTR)candidate & 7)) continue;
                 if (!window_ok((void *)candidate, 0x110, &winBase, &winEnd))
                     continue;
@@ -501,19 +512,94 @@ static lua_State *state_from_scriptcontext(void)
     return 0;
 }
 
-/* a real interned string without lua_pushlstring. luaO_pushvfstring formats "%s" out of a va_list
-   we build by hand: Win64 varargs live in the caller's shadow space for pointers, and the first
-   vararg slot is the first thing the formatter reads, so one slot is the whole argument list. */
+/* A pushed Lua string without lua_pushlstring: the value is a plain TValue on the stack and for a
+   string that is just a pointer plus tag 5, so the only thing missing is an object with the
+   TString shape lua_tolstring reads - next, flags, length at +0x14, bytes at +0x18. A local
+   buffer of ours is enough for a value that only has to survive the call; two slots so a source
+   and a chunkname can be live at once. */
+static unsigned char g_fakeString[2][0x18 + 0x1000];
+static int g_fakeSlot;
+
+static void push_value(lua_State *state, void *pointer, unsigned int tag)
+{
+    unsigned char *top = *(unsigned char **)((unsigned char *)state + L_TOP);
+    *(void **)top = pointer;
+    *(unsigned int *)(top + 0xC) = tag;
+    *(unsigned char **)((unsigned char *)state + L_TOP) = top + 0x10;
+}
+
+static unsigned char *make_string(const char *text)
+{
+    size_t length = lstrlenA(text);
+    unsigned char *object = g_fakeString[g_fakeSlot++ & 1];
+    if (length > 0xFF0) length = 0xFF0;
+    memset(object, 0, 0x18);
+    *(unsigned int *)(object + 8) = 0x00000501;   /* flags as the client lays them out */
+    *(unsigned int *)(object + 0x14) = (unsigned int)length;
+    memcpy(object + 0x18, text, length);
+    object[0x18 + length] = 0;
+    return object;
+}
+
 static void push_string(lua_State *state, const char *text)
 {
-    struct {
-        void *general[8];
-        unsigned __int64 floatregs[16];
-        void *overflow;
-    } list;
-    memset(&list, 0, sizeof(list));
-    list.general[0] = (void *)text;
-    g.pushvf(state, "%s", &list);
+    push_value(state, make_string(text), 5);
+}
+
+/* tag of the value on top; a C function returning LUA_MULTRET says nothing about results, so
+   the result is judged by what is actually on the stack */
+static unsigned int top_tag(lua_State *state)
+{
+    unsigned char *top = *(unsigned char **)((unsigned char *)state + L_TOP);
+    return *(unsigned int *)(top - 0x10 + 0xC);
+}
+
+/* Calling a base-library function from a resting state: pcall counts its arguments as
+   `top - ci->func - 1`, and ci->func is the frame slot one below base, so the function has to be
+   parked there. That slot belongs to the frame we interrupted, so it is saved and put back after
+   the call, and the results are dropped by restoring top. */
+static int call_borrowing_frame(lua_State *state, void *function, const char **args, int count,
+                                char *message, size_t messageSize)
+{
+    unsigned char *base = *(unsigned char **)((unsigned char *)state + L_BASE);
+    unsigned char *slot = base - 0x10;
+    unsigned char saved[0x10];
+    int status;
+    memcpy(saved, slot, sizeof(saved));
+    *(void **)slot = function;
+    *(unsigned int *)(slot + 0xC) = 7;
+    for (int i = 0; i < count; i++) push_string(state, args[i]);
+    {
+        unsigned char *before = *(unsigned char **)((unsigned char *)state + L_TOP);
+        char line[64];
+        wsprintfA(line, "call %p nargs %d base-top %d", function, count,
+                  (int)((before - base) / 0x10));
+        put(line);
+    }
+    status = g.luaBpcall(state);
+    if (status == 2 && message) top_message(state, message, messageSize);
+    {
+        unsigned char *after = *(unsigned char **)((unsigned char *)state + L_TOP);
+        char line[64];
+        wsprintfA(line, "call ret %d top-base-after %d tag %u", status,
+                  (int)((after - base) / 0x10), *(unsigned int *)(after - 0x10 + 0xC));
+        put(line);
+    }
+    memcpy(slot, saved, sizeof(saved));
+    *(unsigned char **)((unsigned char *)state + L_TOP) = base;
+    return status;
+}
+
+/* the message from a failed call, read straight off the string object */
+static const char *top_message(lua_State *state, char *out, size_t size)
+{
+    unsigned char *top = *(unsigned char **)((unsigned char *)state + L_TOP);
+    unsigned char *value = top - 0x10;
+    if (*(unsigned int *)(value + 0xC) != 5) return "no message";
+    {
+        unsigned char *object = *(unsigned char **)value;
+        return safe_read(object + 0x18, out, size - 1) ? (out[size - 1] = 0, out) : "unreadable";
+    }
 }
 
 /* source -> bytecode -> closure. Returns the same codes as luau_load so callers stay simple. */
@@ -562,6 +648,10 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
     }
     if (!chunk) {
         fail("compile", "runner.luau missing");
+    if (!g.state) {
+        g.state = state_from_file();
+        if (g.state) put("sfile hit");
+    }
         return;
     }
 #ifdef UMBRA_HOST
@@ -1145,9 +1235,9 @@ static int executable(void *address)
     if (region.Protect == PAGE_EXECUTE_READ || region.Protect == PAGE_EXECUTE_READWRITE ||
         region.Protect == PAGE_EXECUTE_WRITECOPY || region.Protect == PAGE_EXECUTE)
         return 1;
-    /* Hyperion parks most of .text at PAGE_NOACCESS and decrypts on first touch, so a
-       committed page that is not marked executable yet is still a legitimate target */
-    if (region.Protect == PAGE_NOACCESS || (region.Protect & PAGE_GUARD)) armed_page(address, 16);
+    /* Hyperion parks most of .text at PAGE_NOACCESS with a guard and decrypts the page when the
+       guard traps, so a committed page that is not marked executable yet is still a legitimate
+       target - and it must stay guarded until something reads it (see safe_read). */
     return 1;
 }
 
@@ -1246,9 +1336,8 @@ __declspec(noinline) static int decrypt_touch(const void *at)
     __try {
         sink = *(const volatile unsigned char *)at;
     }
-    __except (GetExceptionCode() == 0x80000001u ||
-              GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION
-                  ? EXCEPTION_CONTINUE_SEARCH : EXCEPTION_EXECUTE_HANDLER) {
+    __except (GetExceptionCode() == 0x80000001u ? EXCEPTION_CONTINUE_SEARCH
+                                               : EXCEPTION_EXECUTE_HANDLER) {
         return 0;
     }
     (void)sink;
@@ -1264,8 +1353,8 @@ static int decrypt_touch(const void *at) { return *(const volatile unsigned char
    Logged once per attach: rva, first bytes, and whether safe_read and a plain copy agree. */
 static void probe_text(unsigned char *base)
 {
-    static const unsigned int rvas[] = { 0x1000u, 0x30000u, 0x4f93e0u, 0x58c2a40u, 0x2566f90u,
-                                         0x254da20u, 0x20a0000u };
+    static const unsigned int rvas[] = { 0x1000u, 0x58c2a40u, 0x58c6820u, 0x58c8030u, 0x41dc170u,
+                                         0x2584420u, 0x254da20u, 0x2566f90u, 0x58c8000u };
     char line[160];
     for (unsigned i = 0; i < sizeof(rvas) / sizeof(rvas[0]); i++) {
         unsigned char *at = base + rvas[i];
@@ -1282,7 +1371,7 @@ static void probe_text(unsigned char *base)
             MEMORY_BASIC_INFORMATION where;
             int usable = VirtualQuery(at, &where, sizeof(where)) &&
                          where.State == MEM_COMMIT;
-            touched = usable ? armed_page(at, 0x1000) : -1;
+            touched = usable ? decrypt_touch(at) : -1;
         }
         { /* plain copy, the way a scanner would read it */
 #ifdef _MSC_VER
@@ -1399,6 +1488,30 @@ static int resolve(void)
     }
     GUARD(if (pinned(base)) { g.compile = 0; return 1; })
     put("r0 base ok");
+    {
+        char line[128];
+        void *r2 = VirtualAlloc(0, 0x1000, MEM_RESERVE, PAGE_NOACCESS);
+        SetLastError(0);
+        void *c2 = r2 ? VirtualAlloc(r2, 0x1000, MEM_COMMIT, PAGE_READWRITE) : 0;
+        DWORD e3 = GetLastError();
+        { DWORD oldp = 0;
+          if (c2 && !VirtualProtect(c2, 0x1000, PAGE_EXECUTE_READWRITE, &oldp)) c2 = 0; }
+        {
+            typedef long (NTAPI *nalloc_t)(void **, ULONG_PTR, void *, ULONG_PTR *, ULONG, ULONG);
+            nalloc_t nalloc = (nalloc_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtAllocateVirtualMemory");
+            void *n3 = 0; ULONG_PTR nsize = 0x1000;
+            long st2 = nalloc ? nalloc(GetCurrentProcess(), &n3, 0, &nsize,
+                                       MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) : -1;
+            char line2[96];
+            wsprintfA(line2, "vprobe2 commit%p e%lu nt%ld %p", c2, e3, st2, n3);
+            put(line2);
+            if (n3) { ULONG_PTR fsize = 0; nalloc(GetCurrentProcess(), &n3, 0, &fsize, 0x8000, PAGE_NOACCESS); }
+        }
+        DWORD e2 = GetLastError();
+        wsprintfA(line, "vprobe res%p commit%p e%lu", r2, c2, e2);
+        put(line);
+        if (r2) VirtualFree(r2, 0, MEM_RELEASE);
+    }
     GUARD(probe_text(base);)
     RESOLVE(load, luau_load_t, LUAU_LOAD, "luau_load");
     put("r1 load");
@@ -1418,6 +1531,8 @@ static int resolve(void)
     RESOLVE(gettop, lua_gettop_t, LUA_GETTOP, "lua_gettop");
     RESOLVE(loadstr, luaB_loadstring_t, LUAB_LOADSTRING, "luaB_loadstring");
     RESOLVE(pushvf, lua_pushvfstring_t, LUA_PUSHVFSTRING, "lua_pushvfstring");
+    RESOLVE(luaBpcall, lua_pcall_t, LUAB_PCALL, "luaB_pcall");
+    RESOLVE(luaBprint, luaB_loadstring_t, LUAB_PRINT, "luaB_print");
 
     /* nothing measured yet (the shipped text is packed, so these are normally all zero):
        calibrate in memory and keep whatever worked */
@@ -2146,11 +2261,19 @@ static int cb_pump(lua_State *state)
  * injected thread. A hook on lua_pcall (the client calls it constantly) gives us the VM thread,
  * in a state where a call is expected, and the runner is installed from there exactly once.
  */
-static unsigned char *g_trampoline;
+static unsigned char *g_trampoline;  /* zero when the stubs live in g_stubs instead */
 static unsigned char *g_replay;      /* replay buffer of the hook being installed */
 static unsigned char *g_hookArena;   /* next free stub slot; each hook owns 256 bytes */
+/* A 12-byte absolute jump reaches anywhere, so the stubs do not have to be allocated: they sit in
+   our own image, which is committed before the client can exhaust its commit limit. */
+static int g_stubsReady;
 #define HOOK_SLOT 256
 #define HOOK_SLOTS (4096 / HOOK_SLOT)
+/* Arbitrary Code Guard is on in the client ("the operation was blocked as the process prohibits
+   dynamic code generation"), so a private page can never be made executable. A page in our own
+   image can be, and if the section arrives executable it needs no protection change at all. */
+#pragma section(".lystub", execute, read, write)
+__declspec(allocate(".lystub")) static unsigned char g_stubs[HOOK_SLOTS * HOOK_SLOT];
 
 /* one record per live hook: re-installing on the same target must rebuild from the *original*
    bytes, because at that point the first bytes are our own E9 and replaying those would jump to
@@ -2213,6 +2336,28 @@ static int sub_insn_len(const unsigned char *code)
     if (op >= 0xB8 && op <= 0xBF) return i + (rex ? 8 : 4); /* mov reg, imm */
     if (op == 0xE8 || op == 0xE9) return i + 4;
     if (op == 0xEB) return i + 1;
+    if (op == 0xF5 || op == 0xF8 || op == 0xF9 || op == 0xFC || op == 0xFD || op == 0x9C ||
+        op == 0x9D || op == 0x98 || op == 0x99 || op == 0x90) return i;      /* one byte */
+    if (op == 0x0F) {                                    /* SSE moves and compares */
+        if (i >= 8) return 0;
+        op = code[i++];
+        if (op >= 0x28 && op <= 0x2F) {
+            if (i >= 8) return 0;
+            modrm = code[i++];
+            mod = (modrm >> 6) & 3;
+            rm = modrm & 7;
+            if (mod != 3) {
+                if (rm == 4) i++;
+                if (mod == 1) i += 1;
+                else if (mod == 2) i += 4;
+                else if (rm == 5) { i += 4; g_insn_rip = 1; }
+            }
+            return i;
+        }
+        return 0;
+    }
+    if (op == 0x6A) return i + 1;
+    if (op == 0x68) return i + 4;
     if (op == 0x8D || op == 0x89 || op == 0x8B || op == 0x31 || op == 0x33 || op == 0x85 ||
         op == 0x3B || op == 0x01 || op == 0x03 || op == 0x29 || op == 0x2B || op == 0x39 ||
         op == 0x83 || op == 0x81 || op == 0xC7 || op == 0xFF || op == 0xF7 || op == 0x2D ||
@@ -2305,6 +2450,24 @@ static int fix_replay(unsigned char *at, unsigned char *replay, int displaced)
     return 1;
 }
 
+/* Arbitrary Code Guard refuses the Win32 call on image pages, so the NT form is used first: it
+   is the same operation with the policy check done by the memory manager instead of the loader. */
+static int protect_code(void *at, size_t size, DWORD protect, DWORD *old)
+{
+    typedef long (NTAPI *nt_protect_t)(void *, void **, ULONG_PTR *, ULONG *, ULONG);
+    nt_protect_t nt;
+    void *base = at;
+    ULONG_PTR span = size;
+    ULONG was = 0;
+    long status;
+    nt = (nt_protect_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtProtectVirtualMemory");
+    if (nt) {
+        status = nt(GetCurrentProcess(), &base, &span, &protect, &was);
+        if (status == 0) { if (old) *old = was; return 1; }
+    }
+    return VirtualProtect(at, size, protect, old) ? 1 : 0;
+}
+
 static int install_hook(void *target)
 {
     DWORD old;
@@ -2313,30 +2476,47 @@ static int install_hook(void *target)
     int i, n = 0, displaced = 0, guard = 0;
     ptrdiff_t delta;
 
+    unsigned char head[32];
+
     if (!target) return 0;
+    /* The target lives in Hyperion's text: one guarded read lets their handler decrypt the page,
+       then the prologue is decoded from a copy. An unreadable prologue is a skipped hook, never a
+       dead client. */
+    if (!decrypt_touch(at)) { put("ih no touch"); return 0; }
+    if (!safe_read(at, head, sizeof(head))) { put("ih no read"); return 0; }
+    if (!head[0] && !head[1]) { put("ih zero page"); return 0; }
 
-    /* whole instructions, at least the five the jump needs */
-    while (displaced < 5) {
-        int length = sub_insn_len(at + displaced);
-        if (!length) return 0;
+    /* whole instructions, at least the twelve the absolute jump needs */
+    while (displaced < 12) {
+        int length = sub_insn_len(head + displaced);
+        if (!length) {
+            const char *hexd = "0123456789abcdef";
+            char line[64];
+            char *o = line;
+            const char *q = "ih bad insn ";
+            while (*q) *o++ = *q++;
+            for (int k = 0; k < 8; k++) { *o++ = hexd[head[k] >> 4]; *o++ = hexd[head[k] & 15]; }
+            *o = 0;
+            put(line);
+            return 0;
+        }
         displaced += length;
-        if (++guard > 6) return 0;
+        if (++guard > 10) { put("ih long prologue"); return 0; }
     }
+    if (displaced > 12) displaced = displaced;   /* keep, the jump fills what it needs */
 
-    if (!g_trampoline) {
-        ULONG_PTR hint = ((ULONG_PTR)at + 0x10000) & ~(ULONG_PTR)0xFFF;
-        for (i = 1; i < 64 && !g_trampoline; i++)
-            g_trampoline = (unsigned char *)VirtualAlloc((void *)(hint + (ULONG_PTR)i * 0x10000),
-                                                         4096, MEM_COMMIT | MEM_RESERVE,
-                                                         PAGE_EXECUTE_READWRITE);
-        if (!g_trampoline) return 0;
+    if (!g_stubsReady) {
+        g_stubsReady = 1;
+        put("ih stubs ready");
     }
+    g_trampoline = g_stubs;
+
     /* Every hook needs its own stub and replay: reusing one page means the second install
        overwrites the first hook's displaced bytes, so the first target then replays the
        second target's prologue and tail-jumps into the wrong function. */
     if (!g_hookArena) g_hookArena = g_trampoline;
-    if (g_hookArena + HOOK_SLOT > g_trampoline + 4096) return 0;
-    if (displaced > (int)sizeof(g_hooks[0].orig)) return 0;
+    if (g_hookArena + HOOK_SLOT > g_trampoline + 4096) { put("ih arena full"); return 0; }
+    if (displaced > (int)sizeof(g_hooks[0].orig)) { put("ih too far"); return 0; }
 
     /* already hooked there? rebuild from the saved prologue instead of the live bytes */
     for (i = 0; i < g_hookCount; i++)
@@ -2355,26 +2535,26 @@ static int install_hook(void *target)
         g_replay = stub + 64;
         g_hooks[g_hookCount].target = target;
         g_hooks[g_hookCount].displaced = displaced;
-        for (n = 0; n < displaced; n++) g_hooks[g_hookCount].orig[n] = at[n];
+        for (n = 0; n < displaced; n++) g_hooks[g_hookCount].orig[n] = head[n];
         g_hookCount++;
-        for (n = 0; n < displaced; n++) g_replay[n] = at[n];
+        for (n = 0; n < displaced; n++) g_replay[n] = head[n];
     }
-    if (!fix_replay(at, g_replay, displaced)) return 0;
+    if (!fix_replay(at, g_replay, displaced)) { put("ih replay"); return 0; }
     n = 0;
-    g_replay[displaced] = 0xE9;
-    {
-        long rel = (long)(at + displaced - (g_replay + displaced + 5));
-        memcpy(g_replay + displaced + 1, &rel, 4);
-    }
+    g_replay[displaced] = 0x48;                          /* mov rax, at+displaced */
+    g_replay[displaced + 1] = 0xB8;
+    *(unsigned long long *)&g_replay[displaced + 2] = (unsigned long long)(at + displaced);
+    g_replay[displaced + 10] = 0xFF;                     /* jmp rax */
+    g_replay[displaced + 11] = 0xE0;
 
     if (HOST_ONLY(g_noThunk)) {                                      /* bisect: replay only */
         n = 0;
-        stub[n++] = 0xE9;
-        {
-            long rel = (long)(g_replay - (stub + n + 4));
-            memcpy(stub + n, &rel, 4);
-        }
-        n += 4;
+        stub[n++] = 0x48;                                /* mov rax, g_replay */
+        stub[n++] = 0xB8;
+        *(unsigned long long *)&stub[n] = (unsigned long long)g_replay;
+        n += 8;
+        stub[n++] = 0xFF;                                /* jmp rax */
+        stub[n++] = 0xE0;
         goto patch_target;
     }
     stub[n++] = 0x50;                                     /* push rax */
@@ -2396,32 +2576,72 @@ static int install_hook(void *target)
     stub[n++] = 0x5A;                                     /* pop rdx */
     stub[n++] = 0x59;                                     /* pop rcx */
     stub[n++] = 0x58;                                     /* pop rax */
-    stub[n++] = 0xE9;
-    {
-        long rel = (long)(g_replay - (stub + n + 4));
-        memcpy(stub + n, &rel, 4);
-    }
-    n += 4;
+    stub[n++] = 0x48;                                    /* mov rax, g_replay */
+    stub[n++] = 0xB8;
+    *(unsigned long long *)&stub[n] = (unsigned long long)g_replay;
+    n += 8;
+    stub[n++] = 0xFF;                                    /* jmp rax */
+    stub[n++] = 0xE0;
 patch_target:
-    FlushInstructionCache(GetCurrentProcess(), g_trampoline, 128);
+    FlushInstructionCache(GetCurrentProcess(), g_trampoline, HOOK_SLOTS * HOOK_SLOT);
 
 #ifdef LYPHEN_HOST
     printf("  [dbg] install at=%p displaced=%d stub=%p replay=%p rel=%lld\n", (void *)at,
            displaced, (void *)stub, (void *)g_replay, (long long)(stub - (at + 5)));
 #endif
-    delta = (unsigned char *)stub - (at + 5);
-    if (delta > 0x7FFFFFFFLL || delta < -0x7FFFFFFFLL) return 0;
-    if (!VirtualProtect(at, displaced + 8, PAGE_EXECUTE_READWRITE, &old)) return 0;
-    at[0] = 0xE9;
-    { long rel = (long)((unsigned char *)stub - (at + 5)); memcpy(at + 1, &rel, 4); }
-    for (i = 5; i < displaced; i++) at[i] = 0x90;
-    VirtualProtect(at, displaced + 8, old, &old);
+    delta = 0;
+    SetLastError(0);
+    if (!protect_code(at, displaced + 8, PAGE_EXECUTE_READWRITE, &old)) {
+        char line[64];
+        wsprintfA(line, "ih no patch e%lu", GetLastError());
+        put(line);
+        return 0;
+    }
+    at[0] = 0x48;                                        /* mov rax, stub */
+    at[1] = 0xB8;
+    *(unsigned long long *)&at[2] = (unsigned long long)stub;
+    at[10] = 0xFF;                                       /* jmp rax */
+    at[11] = 0xE0;
+    for (i = 12; i < displaced; i++) at[i] = 0x90;
+    protect_code(at, displaced + 8, old, 0);
     FlushInstructionCache(GetCurrentProcess(), at, displaced + 8);
     g_hooked = 1;
     return 1;
 }
 
 /* installed on the VM thread: load the runner, then the hook is no longer needed */
+/* The gui finds the state and the loadstring closure from outside (it can read the whole heap
+   safely, with no traps) and leaves them here as "%x %x"; the payload only parses it back. */
+static lua_State *state_from_file(void)
+{
+    char path[MAX_PATH], text[64];
+    HANDLE file;
+    DWORD read = 0;
+    unsigned long long values[3] = { 0, 0, 0 };
+    int field = 0, digits = 0;
+    GetEnvironmentVariableA("LOCALAPPDATA", path, MAX_PATH);
+    lstrcatA(path, "/Lyphen/state.txt");
+    file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, 0);
+    if (file == INVALID_HANDLE_VALUE) return 0;
+    if (!ReadFile(file, text, sizeof(text) - 1, &read, 0)) { CloseHandle(file); return 0; }
+    CloseHandle(file);
+    text[read] = 0;
+    for (DWORD i = 0; i < read && field < 3; i++) {
+        char c = text[i];
+        int nibble;
+        if (c >= '0' && c <= '9') nibble = c - '0';
+        else if (c >= 'a' && c <= 'f') nibble = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') nibble = c - 'A' + 10;
+        else { if (digits) { field++; digits = 0; } continue; }
+        values[field] = (values[field] << 4) | (unsigned)nibble;
+        digits++;
+    }
+    if (!values[0]) return 0;
+    g.loadstringClosure = (void *)values[1];
+    g.printClosure = (void *)values[2];
+    return (lua_State *)values[0];
+}
+
 /* The trigger's first argument *is* the state: tolstring, pcall and gettop all take L in rcx, so
    a hook on one of them hands it over and the blind heap crawl is only a fallback. */
 static int plausible_state(lua_State *state)
@@ -2447,6 +2667,13 @@ static void install_now(void *hint)
         put("state from hook arg");
         g.state = (lua_State *)hint;
     }
+    if (!g.state) {
+        lua_State *given = state_from_file();
+        if (given && plausible_state(given)) {
+            put("state from file");
+            g.state = given;
+        }
+    }
     state = g.state ? g.state : state_from_scriptcontext();
     if (!state) {
         g_installed = 0;
@@ -2457,12 +2684,33 @@ static void install_now(void *hint)
     /* proof of life that needs no table api: compile a chunk through the base library's own
        loadstring, run it, and log whatever comes back. The bridge needs lua_createtable and
        friends, so this is the only path that survives when only the pinned four resolve. */
-    if (state && g.pcall && g.loadstr && g.pushvf) {
-        static const char smoke[] = "print(\"[lyphen] hello from luau\")";
-        if (load_source(state, "@Lyphen/smoke", smoke) == 0 && g.pcall(state, 0, 0, 0) == 0)
-            put("smoke ran clean");
-        else
-            fail("resume", g.tolstring ? g.tolstring(state, -1, 0) : "smoke failed");
+    if (state && g.luaBpcall && g.loadstringClosure) {
+        char message[256];
+        const char *args[2];
+        message[0] = 0;
+        args[0] = "return 40 + 2";
+        args[1] = "@Lyphen/smoke";
+        if (g.printClosure) {
+            char probeMsg[128];
+            probeMsg[0] = 0;
+            put("p1 probe print");
+            if (call_borrowing_frame(state, g.printClosure, 0, 0, probeMsg, sizeof(probeMsg)) != 2)
+                put("p2 probe ok");
+            else
+                fail("resume", probeMsg[0] ? probeMsg : "probe print failed");
+        }
+        put("s2 loadstring");
+        if (call_borrowing_frame(state, g.loadstringClosure, args, 2, message, sizeof(message)) == 2
+            || top_tag(state) != 7) {
+            fail("resume", message[0] ? message : "loadstring gave no closure");
+        } else {
+            void *closure = *(void **)(*(unsigned char **)((unsigned char *)state + L_TOP) - 0x10);
+            put("s3 compiled");
+            if (call_borrowing_frame(state, closure, 0, 0, message, sizeof(message)) != 2)
+                put("smoke ran clean");
+            else
+                fail("resume", message[0] ? message : "chunk failed");
+        }
     }
     spawn_runner(state, g_apiSource, g_runnerSource);
 }
@@ -2506,7 +2754,8 @@ __declspec(dllexport) DWORD WINAPI lyphen_entry(void *parameter)
     LYPHEN_TRY {
         code = run_entry();
     }
-    LYPHEN_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+    LYPHEN_EXCEPT(GetExceptionCode() == 0xE06D7363u ? EXCEPTION_CONTINUE_SEARCH
+                                                    : EXCEPTION_EXECUTE_HANDLER) {
         char line[160];
         EXCEPTION_POINTERS *info = GetExceptionInformation();
         wsprintfA(line, "fail entry %s code %lx at %p", g_stage, GetExceptionCode(),
@@ -2578,6 +2827,8 @@ static DWORD run_entry(void)
 
     put("m7 resolved");
     stage("state");
+    g.state = state_from_file();          /* the gui leaves it here; empty file = 0 */
+    if (g.state) put("sfile");
     /* The hook supplies the state, so the heap crawl is skipped here: it is the one step that
        reliably kills the client, and nothing needs its answer until the fallback path. */
     {
@@ -2588,9 +2839,9 @@ static DWORD run_entry(void)
            frame of its own, so replaying its prologue cannot disturb error handling. The trampoline
            page carries no unwind info, so a throwing function is the wrong place to stand in. */
         else if (put("m8 runner read"),
-                 (g.tolstring && install_hook((void *)g.tolstring)) ||
-                 (g.pcall && install_hook((void *)g.pcall)) ||
-                 (g.gettop && install_hook((void *)g.gettop)))
+                 (put("h1"), g.luaBpcall && install_hook((void *)g.luaBpcall)) ||
+                 (put("h2"), g.luaBprint && install_hook((void *)g.luaBprint)) ||
+                 (put("h3"), g.tolstring && install_hook((void *)g.tolstring)))
             emit("i", 0, "waiting for the vm thread");
         else {
             /* no hook possible: fall back to installing from here, which is the racy path */
@@ -2599,7 +2850,9 @@ static DWORD run_entry(void)
         }
     }
 
+    put("e2 block done");
     emit("i", 0, "core up");
+    put("e3 emitted");
     /* no loop here: the caller's thread is given straight back. Everything after this runs on
        the runner's Heartbeat (bridge pump), so we add no thread to the client. */
     return 0;

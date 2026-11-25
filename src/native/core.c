@@ -314,8 +314,12 @@ static void spawn_runner(lua_State *state, char *apiChunk, char *chunk)
        The runner compiles api.luau through the bridge, so nothing has to be passed as a
        second call argument: an api table pushed before the runner would sit below it and
        pcall would try to call the table (which is exactly what the harness caught). */
-    if (!state || !g.load || !g.compile || !g.pcall || !g.createtable) {
-        fail("resume", "no state or no luau surface");
+    if (!state || !g.load || !g.pcall) {
+        fail("resume", "no state or no luau entry");
+        return;
+    }
+    if (!g.createtable || !g.pushcclosure || !g.setfield || !g.rawseti) {
+        fail("resume", "table api unresolved (bridges cannot be built)");
         return;
     }
     if (!chunk) {
@@ -785,6 +789,7 @@ static int cb_bus_stop(lua_State *state)
 /* ------------------------------------------------------------------ registration */
 static void field(lua_State *state, const char *name, void *function)
 {
+    if (!g.pushcclosure || !g.setfield) return;
     g.pushcclosure(state, function, 0, 0, 0);
     g.setfield(state, -2, name);
 }
@@ -816,7 +821,7 @@ static void push_bridge(lua_State *state, const char *apiSource)
     field(state, "setclipboard", (void *)cb_setclipboard);
     field(state, "windowActive", (void *)cb_windowactive);
     field(state, "loadstring", (void *)cb_loadstring);
-    if (apiSource) {
+    if (apiSource && g.pushls && g.setfield) {
         g.pushls(state, apiSource, lstrlenA(apiSource));
         g.setfield(state, -2, "apiSource");
     }
@@ -1160,6 +1165,45 @@ static void *anchor_calls(unsigned char *base, const char *name, size_t nameLeng
     return chosen;
 }
 
+/* the nearest call target before `at`, for entries that always precede another */
+static void *previous_call(unsigned char *at, size_t window)
+{
+    size_t i;
+    for (i = 1; i < window; i++) {
+        unsigned char head[5];
+        long displacement;
+        void *target;
+        if (!safe_read(at - i, head, sizeof(head))) return 0;
+        if (head[0] != 0xE8) continue;
+        displacement = *(long *)&head[1];
+        target = at - i + 5 + displacement;
+        if (exec_target((unsigned long long)target) && writes_top(target)) return target;
+    }
+    return 0;
+}
+
+/* lua_gettop is (top - base) / 16 on the state header and nothing else: a very distinct shape */
+static void *find_gettop(unsigned char *base)
+{
+    unsigned char *start = base + 0x1000;
+    size_t span = UMBRA_TEXT_SIZE > (8u << 20) ? (8u << 20) : UMBRA_TEXT_SIZE;
+    size_t i;
+    for (i = 0; i + 32 < span; i++) {
+        unsigned char code[32];
+        if (!safe_read(start + i, code, sizeof(code))) return 0;
+        /* 48 8B 41 80      mov rax,[rcx+0x80]
+           48 2B 41 78      sub rax,[rcx+0x78]
+           48 C1 F8 04      sar rax,4
+           C3               ret */
+        if (code[0] != 0x48 || code[1] != 0x8B || code[2] != 0x41 || code[3] != 0x80) continue;
+        if (code[4] != 0x48 || code[5] != 0x2B || code[6] != 0x41 || code[7] != 0x78) continue;
+        if (code[8] != 0x48 || code[9] != 0xC1 || code[10] != 0xF8 || code[11] != 0x04) continue;
+        if (code[12] != 0xC3) continue;
+        return start + i;
+    }
+    return 0;
+}
+
 static void report_pick(const char *label, void *at)
 {
     char line[96];
@@ -1187,6 +1231,12 @@ static int calibrate(unsigned char *base)
     g.pcall = (lua_pcall_t)anchor_calls(base, "pcall", 5, 0);
     if (g.load) report_pick("load", (void *)g.load);
     else fail("scan", "no load anchor found");
+    if (!g.compile) {
+        /* the compile call sits immediately before the load call in luaB_loadstring */
+        unsigned char *loadAt = (unsigned char *)g.load;
+        g.compile = (luau_compile_t)previous_call(loadAt, 0x400);
+    }
+
     if (!g.pcall) {
         /* the pcall entry often references it indirectly; fall back to the other top-writing
            callee in loadstring, which is the compile/push side */
@@ -1195,6 +1245,9 @@ static int calibrate(unsigned char *base)
     }
     if (g.pcall) report_pick("call", (void *)g.pcall);
     else fail("scan", "no call anchor found");
+    if (!g.gettop && (g.gettop = (lua_gettop_t)find_gettop(base)) != 0)
+        report_pick("gettop", (void *)g.gettop);
+    if (g.compile) report_pick("compile", (void *)g.compile);
     return g.load && g.pcall && g.pcall != (lua_pcall_t)g.load;
 }
 

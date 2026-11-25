@@ -1,12 +1,10 @@
 {
  "next": [
-  "ask the user to run v0.1.1: if the window is blank, the animation templates in Theme.xaml are the cause and they come out",
-  "native: signal walk for getconnections, then the file/http/input bridges the api expects",
-  "state find: push the found state through luacall once more, one TString argument, watch for the crash that returned earlier",
-  "menu: shrink the toast delay if the user reports stacking, and measure fps cost of the ESP loop"
+  "measure the 12 unmeasured anchors live (luau_load, lua_pcall, the push/pop set): they are the only things between here and a first chunk running",
+  "signals: getconnections needs the connection table walk; do it after a chunk runs so the loop is small",
+  "assert a TString push on the found state before any reload (top must move by 16, base unchanged)",
+  "menu: keep the shipped scripts on the newest client version and re-check each one"
  ],
- "blocked": [
-  "live client work needs the desktop; this container has no Roblox and no interop"
- ],
- "updated": "2026-11-25T00:40:00"
+ "blocked": ["live measurement needs the windows box; this container has no Roblox"],
+ "updated": "2026-11-25T01:15:00"
 }

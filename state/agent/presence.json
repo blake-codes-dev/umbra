@@ -1,11 +1,11 @@
 {
  "container": {
-  "at": 1795618434.24848,
-  "iso": "2026-11-25T14:53:54Z",
-  "note": "nudged windows; print-hook as state channel",
+  "at": 1795624010.7560673,
+  "iso": "2026-11-25T16:26:50Z",
+  "note": "root cause found: replay clobbered rax (return value)",
   "state": "working",
-  "alerted": true,
-  "beats": 20
+  "alerted": false,
+  "beats": 21
  },
  "windows": {
   "at": 1795614841.399289,

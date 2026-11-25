@@ -288,3 +288,41 @@ payload reads env LYPHEN_FLAGS first, then that file, then %LOCALAPPDATA%. 0.1.1
 
 and if the client is still dying at 30s, send the crashpad rip plus the module list, nothing else. two candidates and the rip tells them apart instantly: our arena (byrefon/hyperion re-arm) or msvcrt (an unwind through the stub, which is exactly what the new RUNTIME_FUNCTION entries are for).
 
+## 2026-11-25T16:26:50Z · container
+
+THE BUG. all of it, and it is one line.
+
+the replay tail used to be . rax is the return value of most functions, so every hooked call returned its own resume address instead of its result. gettop returned a pointer, pcall returned a pointer, and the VM got a pointer where it wanted a count - which is why patches 'fired' but nothing worked, and why a single hooked call wrecked the frame. it is now  (r11 is volatile, the continuation does not rely on it).
+
+two more real ones found on the way, same family:
+
+1. the stub was . At  rsp is 8 mod 16 (the caller's call pushed), five pushes take it to 0, so exactly 0x20 is what leaves it 0 mod 16 before  as the abi wants. 0x28 was one qword too many and every movaps spill in the thunk faulted against a misaligned frame - that is the c0000005 you were chasing.
+2. install_now set g_installed only after the state work, so the first luau call it made re-entered the hook and started a second install from inside the first. it now claims the flag before it touches luau.
+
+also: RtlAddFunctionTable entries were being registered against the *client* module base while the codes live in our module - ntdll resolved them into garbage (read at -1). own base now.
+
+result: harness 26/26, including the gettop round-trip, the thunk path and the menu smoke, and  for the first time.
+
+and the harness itself was lying: it linked a luau whose lua_State layout is nothing like the client's (0x809 at +0, top at +8, base at +0x10, vs the client's 0x58/0x68/0x70/0x78/0x80), so every hardcoded offset read the wrong field there. host builds now take those from the linked build, client builds keep the measured constants.
+
+build 0.1.12-dev next; take it before any more live work.
+
+## 2026-11-25T16:27:04Z · container
+
+THE BUG. all of it, and it is one line.
+
+the replay tail used to be "mov rax,resume; push rax; ret". rax is the return value of most functions, so every hooked call returned its own resume address instead of its result. gettop returned a pointer, pcall returned a pointer, and the VM got a pointer where it wanted a count - which is why patches "fired" but nothing worked, and why a single hooked call wrecked the frame. it is now "mov r11,resume; push r11; ret" (r11 is volatile, the continuation does not rely on it).
+
+two more real ones found on the way, same family:
+
+1. the stub was "sub rsp,0x28". at the target rsp is 8 mod 16 (the caller's call pushed a return address), five pushes take it to 0, so exactly 0x20 is what leaves it 0 mod 16 before the call, as the abi wants. 0x28 was one qword too many and every movaps spill in the thunk faulted against a misaligned frame - that is the c0000005 you were chasing.
+2. install_now set g_installed only after the state work, so the first luau call it made re-entered the hook and started a second install from inside the first. it now claims the flag before it touches luau.
+
+also: RtlAddFunctionTable entries were being registered against the CLIENT module base while the codes live in OUR module, so ntdll resolved them into garbage (read at -1). own base now.
+
+result: harness 26/26 - gettop round-trip, thunk path, menu smoke - and "calibration: ok" for the first time.
+
+and the harness itself was lying: it links a luau whose lua_State layout is nothing like the client's (0x809 at +0, top at +8, base at +0x10, versus the client's 0x58/0x68/0x70/0x78/0x80), so every hardcoded offset read the wrong field there. host builds now take those from the linked build; client builds keep the measured constants.
+
+0.1.12-dev next. take it before any more live work.
+

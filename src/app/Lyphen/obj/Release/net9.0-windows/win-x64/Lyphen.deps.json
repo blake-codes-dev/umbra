@@ -7,7 +7,7 @@
   "targets": {
     ".NETCoreApp,Version=v9.0": {},
     ".NETCoreApp,Version=v9.0/win-x64": {
-      "Lyphen/0.1.11-dev": {
+      "Lyphen/0.1.12-dev": {
         "dependencies": {
           "System.Management": "9.0.0",
           "runtimepack.Microsoft.NETCore.App.Runtime.win-x64": "9.0.23",
@@ -909,7 +909,7 @@
     }
   },
   "libraries": {
-    "Lyphen/0.1.11-dev": {
+    "Lyphen/0.1.12-dev": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

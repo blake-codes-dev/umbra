@@ -2315,6 +2315,7 @@ static unsigned char *g_hookArena;   /* next free stub slot; each hook owns 256 
 /* A 12-byte absolute jump reaches anywhere, so the stubs do not have to be allocated: they sit in
    our own image, which is committed before the client can exhaust its commit limit. */
 static int g_stubsReady;
+static int g_unwindUsed;
 static DWORD wasArena;
 #define DRY_PATCH 0
 #define HOOK_SLOT 256
@@ -2612,6 +2613,63 @@ static int protect_code(void *at, size_t size, DWORD protect, DWORD *old)
     return VirtualProtect(at, size, protect, old) ? 1 : 0;
 }
 
+/* The stub and the replay are hand-built code with no .pdata, so an exception raised anywhere
+   under them unwinds into nothing and eats the stack (the harness shows it as "stack overflow"
+   while delivering the fault). These entries describe the stub's fixed shape - five pushes and a
+   0x28 allocation - and are reused as a close approximation for the replay, which only has to keep
+   the unwinder walking, not report exact locals. */
+typedef struct { DWORD begin, end, info; } rfunc;
+typedef struct { unsigned char codeOffset; unsigned char unwindOp : 4; unsigned char opInfo : 4; } ucode;
+typedef struct {
+    unsigned char version : 3;
+    unsigned char flags : 5;
+    unsigned char prologSize;
+    unsigned char codeCount;
+    unsigned char frameReg : 4;
+    unsigned char frameOffset : 4;
+    ucode codes[16];
+} uinfo;
+
+static int register_stub_unwind(unsigned char *stub, unsigned char *replay)
+{
+    static rfunc table[HOOK_SLOTS * 2];
+    static uinfo info;
+    static int used;
+    typedef BOOLEAN (WINAPI *add_t)(void *, DWORD, DWORD64);
+    add_t add;
+    unsigned char *base = module_base(L"RobloxPlayerBeta.exe");
+    int i = 0;
+    if (!base) base = (unsigned char *)GetModuleHandleA(0);
+
+    if (!used) {
+        used = 1;
+        info.version = 1;
+        info.flags = 0;
+        info.prologSize = 0;
+        /* reverse of the prologue: the 0x28 allocation, then the five pushes */
+        /* UWOP_ALLOC_SMALL: OpInfo is size/8 - 1, so 0x28 becomes 4 */
+        info.codes[i].codeOffset = 7;  info.codes[i].unwindOp = 2; info.codes[i++].opInfo = 4;
+        info.codes[i].codeOffset = 23; info.codes[i].unwindOp = 0; info.codes[i++].opInfo = 9;
+        info.codes[i].codeOffset = 21; info.codes[i].unwindOp = 0; info.codes[i++].opInfo = 8;
+        info.codes[i].codeOffset = 18; info.codes[i].unwindOp = 0; info.codes[i++].opInfo = 2;
+        info.codes[i].codeOffset = 16; info.codes[i].unwindOp = 0; info.codes[i++].opInfo = 1;
+        info.codes[i].codeOffset = 14; info.codes[i].unwindOp = 0; info.codes[i++].opInfo = 0;
+        info.codeCount = 6;
+    }
+    if (g_unwindUsed + 2 > HOOK_SLOTS * 2) return 0;
+    table[g_unwindUsed].begin = (DWORD)(stub - base);
+    table[g_unwindUsed].end = (DWORD)(stub + 64 - base);
+    table[g_unwindUsed].info = (DWORD)((unsigned char *)&info - base);
+    g_unwindUsed++;
+    table[g_unwindUsed].begin = (DWORD)(replay - base);
+    table[g_unwindUsed].end = (DWORD)(replay + 64 - base);
+    table[g_unwindUsed].info = (DWORD)((unsigned char *)&info - base);
+    g_unwindUsed++;
+    add = (add_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "RtlAddFunctionTable");
+    if (!add) return 0;
+    return add(table, 2, (DWORD64)(ULONG_PTR)base) ? 1 : 0;
+}
+
 static int install_hook(void *target)
 {
     DWORD old;
@@ -2786,6 +2844,7 @@ patch_target:
              *(unsigned long long *)(at + 2),
              (unsigned long long)((unsigned long long)(stub - g_stubs) / HOOK_SLOT)); }
 #endif
+    register_stub_unwind(stub, g_replay);
     FlushInstructionCache(GetCurrentProcess(), at, displaced);
     g_hooked = 1;
     return 1;

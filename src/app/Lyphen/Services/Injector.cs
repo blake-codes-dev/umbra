@@ -315,6 +315,16 @@ public sealed class Injector
                         (UIntPtr)Math.Max(section.VirtualSize, 0x1000u), page, out _);
                 }
                 VirtualProtectEx(process, remote, (UIntPtr)pe.SizeOfHeaders, PageExecuteRead, out _);
+                /* every indirect branch into the payload is cfg-checked: our .text and the stub
+                   section have to be declared valid call targets or the first call faults with an
+                   access violation that looks like a bad address */
+                foreach (var section in pe.Sections)
+                {
+                    /* .text and the stub section are the executable ones in this payload */
+                    if (section.Name != ".text" && section.Name != ".lystub") continue;
+                    for (var off = 0; off < section.VirtualSize; off += 0x1000)
+                        MarkCfgTarget(process, remote + (int)section.VirtualAddress + off, 0x1000);
+                }
                 foreach (var section in pe.Sections)
                 {
                     var at0 = remote + (int)section.VirtualAddress;

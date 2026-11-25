@@ -848,7 +848,9 @@ int main(int argc, char **argv)
         int hookedTop = getenv("LYPHEN_NO_HOOK") ? 0 : install_hook((void *)lua_gettop);
         CHECK(hookedTop, "gettop hook installs");
         for (int round = 0; round < 5 && hookedTop; round++) {
+            printf("  [dbg] round %d pre\n", round);
             base = lua_gettop(L);
+            printf("  [dbg] round %d post base=%d\n", round, base);
             lua_pushinteger(L, round);
             if (lua_gettop(L) != base + 1) ok = 0;
             if (g_installed_via_thunk) seen = 1;
